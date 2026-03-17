@@ -25,6 +25,176 @@ export interface SessionData {
   nextPlan: string;
 }
 
+export const DEFAULT_PROMPTS = {
+  clinicalReport: `Anda adalah seorang hipnoterapis profesional yang ahli dalam menulis laporan sesi terapi (Clinical Notes).
+Tugas Anda adalah membuat laporan sesi yang komprehensif, terstruktur, rapi, dan profesional berdasarkan catatan mentah berikut ini.
+
+GAYA PENULISAN:
+{{STYLE_INSTRUCTION}}
+Gunakan bahasa Indonesia yang formal, empatik, dan klinis.
+
+INFORMASI TERAPIS & KLINIK:
+- Nama Terapis: {{THERAPIST_NAME}}
+- Nama Klinik: {{CLINIC_NAME}}
+
+DATA SESI:
+- Nama Klien: {{CLIENT_NAME}}
+- Umur: {{CLIENT_AGE}}
+- Jenis Kelamin: {{CLIENT_GENDER}}
+- Tanggal Sesi: {{SESSION_DATE}}
+- Sesi Ke: {{SESSION_NUMBER}}
+- Pendekatan/Jenis Terapi: {{THERAPY_TYPE}}
+
+ASESMEN AWAL:
+- Keluhan Utama: {{PRESENTING_PROBLEM}}
+- Observasi Awal (Fisik/Emosi): {{INITIAL_OBSERVATION}}
+- Skala SUD Awal (1-10): {{INITIAL_SUD}}
+
+PROSES TERAPI & INTERVENSI:
+- Teknik yang Digunakan: {{TECHNIQUES_USED}}
+- Kedalaman Trance (jika relevan): {{TRANCE_DEPTH}}
+- Dinamika Sesi & Insight: {{SESSION_DYNAMICS}}
+
+HASIL & TINDAK LANJUT:
+- Skala SUD Akhir (1-10): {{FINAL_SUD}}
+- Observasi Pasca-Sesi: {{POST_OBSERVATION}}
+- Tugas / PR (Homework): {{HOMEWORK}}
+- Rencana Sesi Selanjutnya: {{NEXT_PLAN}}
+
+FORMAT LAPORAN YANG DIHARAPKAN (Gunakan Markdown dengan spasi yang konsisten, heading yang tepat, dan bullet points yang rapi):
+
+# Laporan Sesi Klinis
+**{{CLINIC_NAME}}**
+
+---
+
+## 1. Informasi Klien & Sesi
+* **Nama Klien:** [Nama]
+* **Umur / Gender:** [Umur] / [Gender]
+* **Tanggal Sesi:** [Tanggal]
+* **Sesi Ke:** [Nomor]
+* **Pendekatan Terapi:** [Jenis Terapi]
+
+## 2. Asesmen & Keluhan Awal
+[Uraikan keluhan utama dan observasi awal menjadi paragraf klinis yang baik. Sebutkan Skala SUD Awal.]
+
+## 3. Proses Terapi & Intervensi
+[Jelaskan jalannya terapi, teknik yang dipakai, kedalaman trance (jika ada), dan respons klien selama sesi. Gunakan bullet points jika perlu untuk merinci teknik atau insight.]
+
+## 4. Hasil & Evaluasi
+[Bandingkan kondisi awal dan akhir, termasuk penurunan SUD. Deskripsikan observasi pasca-sesi.]
+
+## 5. Rekomendasi & Rencana Tindak Lanjut
+* **Tugas / PR:** [Tugas]
+* **Rencana Sesi Berikutnya:** [Rencana]
+
+---
+**Terapis:**
+{{THERAPIST_NAME}}
+
+Pastikan laporannya mengalir dengan baik, tidak hanya sekadar menyalin poin-poin di atas, tetapi merangkainya menjadi narasi klinis yang utuh dan profesional. Jika ada data yang kosong (-), abaikan atau sesuaikan narasinya dengan wajar.`,
+  nextSessionPlan: `Anda adalah seorang hipnoterapis profesional ({{THERAPIST_NAME}}).
+Berdasarkan data sesi dan laporan sesi sebelumnya di bawah ini, buatkan Perencanaan Sesi Lanjutan (Treatment Plan) jangka panjang yang komprehensif, terstruktur, dan profesional untuk {{PLAN_SESSIONS_COUNT}} sesi ke depan.
+
+DATA SESI SEBELUMNYA:
+- Nama Klien: {{CLIENT_NAME}}
+- Keluhan Utama: {{PRESENTING_PROBLEM}}
+- Teknik Terakhir: {{TECHNIQUES_USED}}
+- Dinamika Sesi: {{SESSION_DYNAMICS}}
+- PR/Tugas: {{HOMEWORK}}
+- Rencana Awal: {{NEXT_PLAN}}
+
+LAPORAN SESI SEBELUMNYA:
+{{PREVIOUS_REPORT}}
+
+Tugas Anda:
+Buatlah dokumen "Rencana Sesi Lanjutan ({{PLAN_SESSIONS_COUNT}} Sesi)" yang mencakup perencanaan bertahap untuk setiap sesi.
+Untuk masing-masing sesi lanjutan (Sesi 1 dari rencana, Sesi 2 dari rencana, dst.), jabarkan:
+1. Tujuan Sesi (Goals)
+2. Review & Evaluasi (Apa yang perlu dicek di awal sesi)
+3. Rencana Intervensi & Teknik (Teknik spesifik apa yang disarankan)
+4. Antisipasi Kendala (Potensi resistensi atau abreaksi dan cara menanganinya)
+5. Indikator Keberhasilan Sesi
+
+Berikan juga ringkasan tujuan akhir (Ultimate Goal) dari seluruh rangkaian {{PLAN_SESSIONS_COUNT}} sesi ini di bagian awal dokumen.
+
+Format dalam Markdown yang rapi dengan heading (gunakan ## untuk pemisah antar sesi), bullet points, dan bahasa Indonesia klinis yang profesional.`,
+  clientReport: `Anda adalah seorang hipnoterapis profesional ({{THERAPIST_NAME}}).
+Berdasarkan laporan sesi klinis di bawah ini, buatkan "Ringkasan Sesi untuk Klien" yang akan diberikan langsung kepada klien.
+
+LAPORAN KLINIS (ARSIP TERAPIS):
+{{PREVIOUS_REPORT}}
+
+Tugas Anda:
+Buat ringkasan sesi dengan kriteria berikut:
+1. Gunakan bahasa yang awam, sederhana, empatik, ramah, dan mudah dipahami oleh klien (hindari jargon klinis yang rumit).
+2. Saring informasi: JANGAN sertakan analisis psikologis yang terlalu dalam, istilah teknis (seperti abreaksi, somnambulism, SUD), atau catatan sensitif yang hanya untuk arsip terapis.
+3. Fokus pada:
+   - Apresiasi atas kehadiran dan kerja keras klien di sesi ini.
+   - Ringkasan singkat tentang apa yang telah dicapai atau dipelajari hari ini (secara positif).
+   - Perubahan positif yang dirasakan (misal: merasa lebih lega, tenang).
+   - Pengingat Tugas/PR (Homework) yang harus dilakukan klien di rumah.
+   - Harapan atau pesan positif untuk sesi selanjutnya.
+
+Format dalam Markdown yang rapi, ramah, dan profesional.`,
+  suggestions: `Anda adalah seorang hipnoterapis profesional ({{THERAPIST_NAME}}).
+Berdasarkan data sesi dan laporan sesi di bawah ini, buatkan dokumen "Saran & Tips untuk Klien" yang berisi panduan praktis untuk membantu proses pemulihan atau pengembangan diri klien di luar jam sesi.
+
+DATA SESI:
+- Nama Klien: {{CLIENT_NAME}}
+- Keluhan Utama: {{PRESENTING_PROBLEM}}
+- Teknik Terakhir: {{TECHNIQUES_USED}}
+
+LAPORAN SESI:
+{{PREVIOUS_REPORT}}
+
+Tugas Anda:
+Buatlah daftar saran dan tips praktis yang mencakup:
+1. Tips Harian (Misal: pernapasan, afirmasi, atau kebiasaan kecil)
+2. Saran Gaya Hidup (Misal: pola tidur, manajemen stres, atau interaksi sosial)
+3. Teknik Self-Help (Teknik sederhana yang bisa dilakukan sendiri jika keluhan muncul kembali)
+4. Pesan Motivasi (Kata-kata penguat untuk klien)
+
+Format dalam Markdown yang rapi, menggunakan bullet points, dan bahasa Indonesia yang sangat mendukung (supportive), memberdayakan (empowering), dan mudah dipahami.`
+};
+
+function buildPrompt(template: string, data: SessionData, therapistName: string, clinicName: string, extra: any = {}) {
+  let prompt = template;
+  const styleInstruction = 
+    data.reportStyle === 'Concise' ? 'Buat laporan yang sangat padat, singkat, dan langsung pada intinya (bullet points dominan).' :
+    data.reportStyle === 'Empathy-focused' ? 'Buat laporan yang menonjolkan empati, dinamika emosional klien, dan proses terapeutik yang mendalam.' :
+    'Buat laporan yang detail, komprehensif, dan mencakup semua aspek klinis secara menyeluruh.';
+
+  const replacements: Record<string, string> = {
+    '{{THERAPIST_NAME}}': therapistName || '-',
+    '{{CLINIC_NAME}}': clinicName || '-',
+    '{{CLIENT_NAME}}': data.clientName || '-',
+    '{{CLIENT_AGE}}': data.clientAge || '-',
+    '{{CLIENT_GENDER}}': data.clientGender || '-',
+    '{{SESSION_DATE}}': data.sessionDate || '-',
+    '{{SESSION_NUMBER}}': data.sessionNumber || '-',
+    '{{THERAPY_TYPE}}': data.therapyType || '-',
+    '{{PRESENTING_PROBLEM}}': data.presentingProblem || '-',
+    '{{INITIAL_OBSERVATION}}': data.initialObservation || '-',
+    '{{INITIAL_SUD}}': data.initialSUD || '-',
+    '{{TECHNIQUES_USED}}': data.techniquesUsed || '-',
+    '{{TRANCE_DEPTH}}': data.tranceDepth || '-',
+    '{{SESSION_DYNAMICS}}': data.sessionDynamics || '-',
+    '{{FINAL_SUD}}': data.finalSUD || '-',
+    '{{POST_OBSERVATION}}': data.postObservation || '-',
+    '{{HOMEWORK}}': data.homework || '-',
+    '{{NEXT_PLAN}}': data.nextPlan || '-',
+    '{{PREVIOUS_REPORT}}': extra.report || '-',
+    '{{PLAN_SESSIONS_COUNT}}': extra.planSessionsCount?.toString() || '1',
+    '{{STYLE_INSTRUCTION}}': styleInstruction
+  };
+
+  for (const [key, value] of Object.entries(replacements)) {
+    prompt = prompt.split(key).join(value);
+  }
+  return prompt;
+}
+
 export async function analyzeTherapistNotes(file: File): Promise<Partial<SessionData>> {
   const base64EncodedDataPromise = new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
@@ -103,35 +273,9 @@ Jika ada field yang tidak ditemukan di catatan, kosongkan saja string-nya ("").`
   }
 }
 
-export async function generateNextSessionPlan(data: SessionData, report: string, planSessionsCount: number = 1): Promise<string> {
-  const prompt = `
-Anda adalah seorang hipnoterapis profesional (Satria Siddik S.Psi, C.T, C.PHt, C.NLP).
-Berdasarkan data sesi dan laporan sesi sebelumnya di bawah ini, buatkan Perencanaan Sesi Lanjutan (Treatment Plan) jangka panjang yang komprehensif, terstruktur, dan profesional untuk ${planSessionsCount} sesi ke depan.
-
-DATA SESI SEBELUMNYA:
-- Nama Klien: ${data.clientName || '-'}
-- Keluhan Utama: ${data.presentingProblem || '-'}
-- Teknik Terakhir: ${data.techniquesUsed || '-'}
-- Dinamika Sesi: ${data.sessionDynamics || '-'}
-- PR/Tugas: ${data.homework || '-'}
-- Rencana Awal: ${data.nextPlan || '-'}
-
-LAPORAN SESI SEBELUMNYA:
-${report}
-
-Tugas Anda:
-Buatlah dokumen "Rencana Sesi Lanjutan (${planSessionsCount} Sesi)" yang mencakup perencanaan bertahap untuk setiap sesi.
-Untuk masing-masing sesi lanjutan (Sesi 1 dari rencana, Sesi 2 dari rencana, dst.), jabarkan:
-1. Tujuan Sesi (Goals)
-2. Review & Evaluasi (Apa yang perlu dicek di awal sesi)
-3. Rencana Intervensi & Teknik (Teknik spesifik apa yang disarankan)
-4. Antisipasi Kendala (Potensi resistensi atau abreaksi dan cara menanganinya)
-5. Indikator Keberhasilan Sesi
-
-Berikan juga ringkasan tujuan akhir (Ultimate Goal) dari seluruh rangkaian ${planSessionsCount} sesi ini di bagian awal dokumen.
-
-Format dalam Markdown yang rapi dengan heading (gunakan ## untuk pemisah antar sesi), bullet points, dan bahasa Indonesia klinis yang profesional.
-`;
+export async function generateNextSessionPlan(data: SessionData, report: string, planSessionsCount: number = 1, therapistName: string, clinicName: string, customPrompt?: string): Promise<string> {
+  const template = customPrompt || DEFAULT_PROMPTS.nextSessionPlan;
+  const prompt = buildPrompt(template, data, therapistName, clinicName, { report, planSessionsCount });
 
   try {
     const response = await ai.models.generateContent({
@@ -149,81 +293,9 @@ Format dalam Markdown yang rapi dengan heading (gunakan ## untuk pemisah antar s
   }
 }
 
-export async function generateClinicalReport(data: SessionData): Promise<string> {
-  const styleInstruction = 
-    data.reportStyle === 'Concise' ? 'Buat laporan yang sangat padat, singkat, dan langsung pada intinya (bullet points dominan).' :
-    data.reportStyle === 'Empathy-focused' ? 'Buat laporan yang menonjolkan empati, dinamika emosional klien, dan proses terapeutik yang mendalam.' :
-    'Buat laporan yang detail, komprehensif, dan mencakup semua aspek klinis secara menyeluruh.';
-
-  const prompt = `
-Anda adalah seorang hipnoterapis profesional yang ahli dalam menulis laporan sesi terapi (Clinical Notes).
-Tugas Anda adalah membuat laporan sesi yang komprehensif, terstruktur, rapi, dan profesional berdasarkan catatan mentah berikut ini.
-
-GAYA PENULISAN:
-${styleInstruction}
-Gunakan bahasa Indonesia yang formal, empatik, dan klinis.
-
-INFORMASI TERAPIS & KLINIK:
-- Nama Terapis: Satria Siddik S.Psi, C.T, C.PHt, C.NLP
-- Nama Klinik: Rumah Terapi Sameera
-
-DATA SESI:
-- Nama Klien: ${data.clientName || '-'}
-- Umur: ${data.clientAge || '-'}
-- Jenis Kelamin: ${data.clientGender || '-'}
-- Tanggal Sesi: ${data.sessionDate || '-'}
-- Sesi Ke: ${data.sessionNumber || '-'}
-- Pendekatan/Jenis Terapi: ${data.therapyType || '-'}
-
-ASESMEN AWAL:
-- Keluhan Utama: ${data.presentingProblem || '-'}
-- Observasi Awal (Fisik/Emosi): ${data.initialObservation || '-'}
-- Skala SUD Awal (1-10): ${data.initialSUD || '-'}
-
-PROSES TERAPI & INTERVENSI:
-- Teknik yang Digunakan: ${data.techniquesUsed || '-'}
-- Kedalaman Trance (jika relevan): ${data.tranceDepth || '-'}
-- Dinamika Sesi & Insight: ${data.sessionDynamics || '-'}
-
-HASIL & TINDAK LANJUT:
-- Skala SUD Akhir (1-10): ${data.finalSUD || '-'}
-- Observasi Pasca-Sesi: ${data.postObservation || '-'}
-- Tugas / PR (Homework): ${data.homework || '-'}
-- Rencana Sesi Selanjutnya: ${data.nextPlan || '-'}
-
-FORMAT LAPORAN YANG DIHARAPKAN (Gunakan Markdown dengan spasi yang konsisten, heading yang tepat, dan bullet points yang rapi):
-
-# Laporan Sesi Klinis
-**Rumah Terapi Sameera**
-
----
-
-## 1. Informasi Klien & Sesi
-* **Nama Klien:** [Nama]
-* **Umur / Gender:** [Umur] / [Gender]
-* **Tanggal Sesi:** [Tanggal]
-* **Sesi Ke:** [Nomor]
-* **Pendekatan Terapi:** [Jenis Terapi]
-
-## 2. Asesmen & Keluhan Awal
-[Uraikan keluhan utama dan observasi awal menjadi paragraf klinis yang baik. Sebutkan Skala SUD Awal.]
-
-## 3. Proses Terapi & Intervensi
-[Jelaskan jalannya terapi, teknik yang dipakai, kedalaman trance (jika ada), dan respons klien selama sesi. Gunakan bullet points jika perlu untuk merinci teknik atau insight.]
-
-## 4. Hasil & Evaluasi
-[Bandingkan kondisi awal dan akhir, termasuk penurunan SUD. Deskripsikan observasi pasca-sesi.]
-
-## 5. Rekomendasi & Rencana Tindak Lanjut
-* **Tugas / PR:** [Tugas]
-* **Rencana Sesi Berikutnya:** [Rencana]
-
----
-**Terapis:**
-Satria Siddik S.Psi, C.T, C.PHt, C.NLP
-
-Pastikan laporannya mengalir dengan baik, tidak hanya sekadar menyalin poin-poin di atas, tetapi merangkainya menjadi narasi klinis yang utuh dan profesional. Jika ada data yang kosong (-), abaikan atau sesuaikan narasinya dengan wajar.
-`;
+export async function generateClinicalReport(data: SessionData, therapistName: string, clinicName: string, customPrompt?: string): Promise<string> {
+  const template = customPrompt || DEFAULT_PROMPTS.clinicalReport;
+  const prompt = buildPrompt(template, data, therapistName, clinicName);
 
   try {
     const response = await ai.models.generateContent({
@@ -241,27 +313,9 @@ Pastikan laporannya mengalir dengan baik, tidak hanya sekadar menyalin poin-poin
   }
 }
 
-export async function generateClientReport(data: SessionData, report: string): Promise<string> {
-  const prompt = `
-Anda adalah seorang hipnoterapis profesional (Satria Siddik S.Psi, C.T, C.PHt, C.NLP).
-Berdasarkan laporan sesi klinis di bawah ini, buatkan "Ringkasan Sesi untuk Klien" yang akan diberikan langsung kepada klien.
-
-LAPORAN KLINIS (ARSIP TERAPIS):
-${report}
-
-Tugas Anda:
-Buat ringkasan sesi dengan kriteria berikut:
-1. Gunakan bahasa yang awam, sederhana, empatik, ramah, dan mudah dipahami oleh klien (hindari jargon klinis yang rumit).
-2. Saring informasi: JANGAN sertakan analisis psikologis yang terlalu dalam, istilah teknis (seperti abreaksi, somnambulism, SUD), atau catatan sensitif yang hanya untuk arsip terapis.
-3. Fokus pada:
-   - Apresiasi atas kehadiran dan kerja keras klien di sesi ini.
-   - Ringkasan singkat tentang apa yang telah dicapai atau dipelajari hari ini (secara positif).
-   - Perubahan positif yang dirasakan (misal: merasa lebih lega, tenang).
-   - Pengingat Tugas/PR (Homework) yang harus dilakukan klien di rumah.
-   - Harapan atau pesan positif untuk sesi selanjutnya.
-
-Format dalam Markdown yang rapi, ramah, dan profesional.
-`;
+export async function generateClientReport(data: SessionData, report: string, therapistName: string, clinicName: string, customPrompt?: string): Promise<string> {
+  const template = customPrompt || DEFAULT_PROMPTS.clientReport;
+  const prompt = buildPrompt(template, data, therapistName, clinicName, { report });
 
   try {
     const response = await ai.models.generateContent({
@@ -279,28 +333,9 @@ Format dalam Markdown yang rapi, ramah, dan profesional.
   }
 }
 
-export async function generateSuggestionsAndTips(data: SessionData, report: string): Promise<string> {
-  const prompt = `
-Anda adalah seorang hipnoterapis profesional (Satria Siddik S.Psi, C.T, C.PHt, C.NLP).
-Berdasarkan data sesi dan laporan sesi di bawah ini, buatkan dokumen "Saran & Tips untuk Klien" yang berisi panduan praktis untuk membantu proses pemulihan atau pengembangan diri klien di luar jam sesi.
-
-DATA SESI:
-- Nama Klien: ${data.clientName || '-'}
-- Keluhan Utama: ${data.presentingProblem || '-'}
-- Teknik Terakhir: ${data.techniquesUsed || '-'}
-
-LAPORAN SESI:
-${report}
-
-Tugas Anda:
-Buatlah daftar saran dan tips praktis yang mencakup:
-1. Tips Harian (Misal: pernapasan, afirmasi, atau kebiasaan kecil)
-2. Saran Gaya Hidup (Misal: pola tidur, manajemen stres, atau interaksi sosial)
-3. Teknik Self-Help (Teknik sederhana yang bisa dilakukan sendiri jika keluhan muncul kembali)
-4. Pesan Motivasi (Kata-kata penguat untuk klien)
-
-Format dalam Markdown yang rapi, menggunakan bullet points, dan bahasa Indonesia yang sangat mendukung (supportive), memberdayakan (empowering), dan mudah dipahami.
-`;
+export async function generateSuggestionsAndTips(data: SessionData, report: string, therapistName: string, clinicName: string, customPrompt?: string): Promise<string> {
+  const template = customPrompt || DEFAULT_PROMPTS.suggestions;
+  const prompt = buildPrompt(template, data, therapistName, clinicName, { report });
 
   try {
     const response = await ai.models.generateContent({

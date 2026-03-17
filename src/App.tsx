@@ -1,16 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { FormInput, FormTextarea, FormSelect } from './components/FormInput';
-import { generateClinicalReport, analyzeTherapistNotes, generateNextSessionPlan, generateClientReport, generateSuggestionsAndTips, SessionData } from './services/geminiService';
+import { generateClinicalReport, analyzeTherapistNotes, generateNextSessionPlan, generateClientReport, generateSuggestionsAndTips, SessionData, DEFAULT_PROMPTS } from './services/geminiService';
 import Markdown from 'react-markdown';
 import { marked } from 'marked';
 import { useUndo } from './hooks/useUndo';
 import { FastChoice } from './components/FastChoice';
-import { Copy, Download, Loader2, Sparkles, User as UserIcon, Activity, BrainCircuit, FileCheck, Save, History, LogOut, LogIn, Edit3, Check, Undo2, Redo2, ImagePlus, CalendarPlus, Upload, MessageSquareHeart, FileText, Lightbulb, Moon, Sun, Trash2 } from 'lucide-react';
+import { Copy, Download, Loader2, Sparkles, User as UserIcon, Activity, BrainCircuit, FileCheck, Save, History, LogOut, LogIn, Edit3, Check, Undo2, Redo2, ImagePlus, CalendarPlus, Upload, MessageSquareHeart, FileText, Lightbulb, Moon, Sun, Trash2, Settings, Key, CreditCard } from 'lucide-react';
 import html2pdf from 'html2pdf.js';
 import { saveAs } from 'file-saver';
 
 const STORAGE_KEY = 'theragen_autosave';
 const HISTORY_KEY = 'theragen_history';
+const SETTINGS_KEY = 'theragen_settings';
+const CREDITS_KEY = 'theragen_credits';
 
 interface HistoryItem {
   id: string;
@@ -24,6 +26,49 @@ interface HistoryItem {
   suggestions: string;
   formData: SessionData;
 }
+
+interface SettingsData {
+  therapistName: string;
+  clinicName: string;
+  prompts: {
+    clinicalReport: string;
+    nextSessionPlan: string;
+    clientReport: string;
+    suggestions: string;
+  };
+}
+
+interface ProductKey {
+  key: string;
+  type: 'A' | 'B' | 'C';
+  isUsed: boolean;
+  redeemedAt?: string;
+}
+
+interface CreditState {
+  user_status: "Active" | "Inactive";
+  current_credit: number;
+  total_reports_generated: number;
+  last_key_used: string | null;
+  available_keys: ProductKey[];
+}
+
+const initialKeys: ProductKey[] = [
+  // Type A (100 Keys)
+  ...["K7J2M", "P4N9B", "X1R6V", "L8T3C", "H5D2G", "Q9F4K", "Z2M7P", "W6S1N", "B3V8R", "J7X4L", "M2K9S", "T5P1D", "F8R4H", "G3N7W", "V6C2Y", "D9B5Q", "S1L8T", "Z4H3M", "P7K2V", "X0N9R", "W2F5G", "L7M3P", "K4T8S", "J1V6D", "H9C2X", "G5B7N", "F2R4Q", "D8S1L", "S3P9W", "V7K5M", "B1N4T", "N6H2G", "M9D8V", "Q4X7Z", "P2L5K", "T8R3C", "X5V1M", "W9N7B", "L3K2P", "K6H4D", "J8S1G", "H2T5V", "G7M9Q", "F4P3Z", "D1B8N", "S6X2W", "V9L7C", "B4R5H", "N2K1S", "M7D3T", "Q5P8V", "P9N4G", "T1L2K", "X6R7M", "W3H9D", "L8S5Z", "K2V4B", "J5M1P", "H7N3T", "G1K8Q", "F9D2V", "D4R6S", "S2P5W", "V8H7L", "B3M9N", "N7K4T", "M1V2D", "Q6S8P", "P3H5G", "T9N1B", "X4L7K", "W2R3M", "L5D9V", "K1P4S", "J7B2H", "H3N6Q", "G8V1T", "F5M4P", "D2K7S", "S9D3V", "V4R8L", "B6P1M", "N1H5G", "M8N2T", "Q3K9S", "P7V4D", "T2S6P", "X9H1G", "W5N3B", "L1L8K", "K7R2M", "J4D5V", "H9P6S", "G2B1H", "F7N4Q", "D3V9T", "S8M5P", "V1K2S", "B5D3V", "N9R7L"].map(k => ({ key: `REDEEM-A-${k}`, type: 'A' as const, isUsed: false })),
+  // Type B (100 Keys)
+  ...["M7P2X", "V4K9F", "C1Y6W", "R8T3N", "D5J2H", "Z9M7P", "F6W1K", "N3V8Q", "Y2L5T", "X8F4M", "G1S7R", "H4D2N", "K9P5V", "L2T8M", "Q5N3X", "P1R6W", "T7V4K", "X3M9B", "W6L1S", "J2H5D", "S8G4R", "N1N7Q", "M4K2P", "V9D5T", "C6R8V", "R1P3W", "D7S5H", "Z2M9K", "F5V1N", "N8T4Q", "Y1L6S", "X4F2M", "G9S3R", "H2D7N", "K5P1V", "L8T6M", "Q3N9X", "P7R2W", "T1V5K", "X6M8B", "W9L4S", "J5H1D", "S2G7R", "N4N3Q", "M9K6P", "V1D8T", "C4R2V", "R7P5W", "D2S9H", "Z5M1K", "F8V4N", "N1T7Q", "Y4L2S", "X9F5M", "G2S8R", "H7D3N", "K1P6V", "L4T9M", "Q9N2X", "P5R1W", "T3V7K", "X8M4B", "W1L5S", "J7H2D", "S4G9R", "N9N6Q", "M2K1P", "V5D4T", "C9R7V", "R2P8W", "D4S1H", "Z7M3K", "F1V6N", "N4T2Q", "Y9L5S", "X2F8M", "G5S1R", "H8D4N", "K2P7V", "L7T3M", "Q1N6X", "P4R9W", "T9V2K", "X5M7B", "W2L1S", "J8H5D", "S1G4R", "N6N7Q", "M3K2P", "V8D5T", "C1R8V", "R4P3W", "D9S5H", "Z3M9K", "F7V1N", "N2T4Q", "Y5L6S", "X1F2M", "G8S3R"].map(k => ({ key: `REDEEM-B-${k}`, type: 'B' as const, isUsed: false })),
+  // Type C (100 Keys)
+  ...["K9F2V", "P4M7Z", "W1Y6C", "N8T3R", "H5J2D", "M9P7X", "K6W1F", "Q3V8N", "T2L5Y", "F8M4X", "G1N7S", "H4R2D", "K9P5V", "L2W8M", "Q5T3X", "P1N6W", "T7V4K", "X3M9B", "W6L1S", "J2H5D", "S8G4R", "N1N7Q", "M4K2P", "V9D5T", "C6R8V", "R1P3W", "D7S5H", "Z2M9K", "F5V1N", "N8T4Q", "Y1L6S", "X4F2M", "G9S3R", "H2D7N", "K5P1V", "L8T6M", "Q3N9X", "P7R2W", "T1V5K", "X6M8B", "W9L4S", "J5H1D", "S2G7R", "N4N3Q", "M9K6P", "V1D8T", "C4R2V", "R7P5W", "D2S9H", "Z5M1K", "F8V4N", "N1T7Q", "Y4L2S", "X9F5M", "G2S8R", "H7D3N", "K1P6V", "L4T9M", "Q9N2X", "P5R1W", "T3V7K", "X8M4B", "W1L5S", "J7H2D", "S4G9R", "N9N6Q", "M2K1P", "V5D4T", "C9R7V", "R2P8W", "D4S1H", "Z7M3K", "F1V6N", "N4T2Q", "Y9L5S", "X2F8M", "G5S1R", "H8D4N", "K2P7V", "L7T3M", "Q1N6X", "P4R9W", "T9V2K", "X5M7B", "W2L1S", "J8H5D", "S1G4R", "N6N7Q", "M3K2P", "V8D5T", "C1R8V", "R4P3W", "D9S5H", "Z3M9K", "F7V1N", "N2T4Q", "Y5L6S", "X1F2M", "G8S3R", "H3D4N"].map(k => ({ key: `REDEEM-C-${k}`, type: 'C' as const, isUsed: false })),
+];
+
+const defaultCreditState: CreditState = {
+  user_status: "Inactive",
+  current_credit: 0,
+  total_reports_generated: 0,
+  last_key_used: null,
+  available_keys: initialKeys
+};
 
 const initialObservationOptions = [
   "Tampak tegang", "Napas pendek/dangkal", "Sering menunduk", "Kontak mata kurang",
@@ -134,6 +179,33 @@ export default function App() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
 
+  // Settings State
+  const [settings, setSettings] = useState<SettingsData>({
+    therapistName: 'Satria Siddik S.Psi, C.T, C.PHt, C.NLP',
+    clinicName: 'Rumah Terapi Sameera',
+    prompts: DEFAULT_PROMPTS
+  });
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<'general' | 'prompts' | 'keys'>('general');
+
+  // Credits State
+  const [creditState, setCreditState] = useState<CreditState>(defaultCreditState);
+  const [showRedeemModal, setShowRedeemModal] = useState(false);
+  const [redeemKey, setRedeemKey] = useState("");
+
+  // Confirmation Modal State
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [confirmConfig, setConfirmConfig] = useState<{
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  } | null>(null);
+
+  const askConfirmation = (title: string, message: string, onConfirm: () => void) => {
+    setConfirmConfig({ title, message, onConfirm });
+    setShowConfirmModal(true);
+  };
+
   // Load from LocalStorage on mount
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
@@ -154,12 +226,44 @@ export default function App() {
       }
     }
 
+    const savedSettings = localStorage.getItem(SETTINGS_KEY);
+    if (savedSettings) {
+      try {
+        const parsed = JSON.parse(savedSettings);
+        setSettings({
+          ...parsed,
+          prompts: parsed.prompts || DEFAULT_PROMPTS
+        });
+      } catch (e) {
+        console.error("Failed to parse settings data");
+      }
+    }
+
+    const savedCredits = localStorage.getItem(CREDITS_KEY);
+    if (savedCredits) {
+      try {
+        setCreditState(JSON.parse(savedCredits));
+      } catch (e) {
+        console.error("Failed to parse credits data");
+      }
+    }
+
     const savedTheme = localStorage.getItem('theragen_theme');
     if (savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
       setIsDarkMode(true);
       document.documentElement.classList.add('dark');
     }
   }, []);
+
+  // Save settings to LocalStorage
+  useEffect(() => {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  }, [settings]);
+
+  // Save credits to LocalStorage
+  useEffect(() => {
+    localStorage.setItem(CREDITS_KEY, JSON.stringify(creditState));
+  }, [creditState]);
 
   const toggleDarkMode = () => {
     setIsDarkMode(prev => {
@@ -239,21 +343,98 @@ export default function App() {
     });
   };
 
-  const handleGenerate = async () => {
-    setIsGenerating(true);
-    setError('');
-    setIsEditing(false);
-    setActiveTab('report');
-    try {
-      const generatedReport = await generateClinicalReport(formData);
-      resetReport(generatedReport);
-      resetPlan(''); // Clear previous plan when generating new report
-      resetClientReport(''); // Clear previous client report
-    } catch (err: any) {
-      setError(err.message || 'Terjadi kesalahan saat membuat laporan.');
-    } finally {
-      setIsGenerating(false);
+  const handleRedeem = () => {
+    const inputKey = redeemKey.trim().toUpperCase();
+    
+    const keyData = creditState.available_keys.find(k => k.key === inputKey);
+
+    if (!keyData) {
+      alert('Product Key tidak valid atau tidak ditemukan.');
+      return;
     }
+
+    if (keyData.isUsed) {
+      alert('Product Key ini sudah pernah digunakan.');
+      return;
+    }
+
+    let addedCredits = 0;
+    if (keyData.type === 'A') addedCredits = 25;
+    else if (keyData.type === 'B') addedCredits = 50;
+    else if (keyData.type === 'C') addedCredits = 100;
+
+    if (addedCredits > 0) {
+      setCreditState(prev => ({
+        ...prev,
+        user_status: "Active",
+        current_credit: prev.current_credit + addedCredits,
+        last_key_used: inputKey,
+        available_keys: prev.available_keys.map(k => 
+          k.key === inputKey ? { ...k, isUsed: true, redeemedAt: new Date().toISOString() } : k
+        )
+      }));
+      alert(`Berhasil! ${addedCredits} kredit telah ditambahkan. Saldo saat ini: ${creditState.current_credit + addedCredits}`);
+      setShowRedeemModal(false);
+      setRedeemKey("");
+    }
+  };
+
+  const generateNewKey = (type: 'A' | 'B' | 'C') => {
+    const randomStr = Math.random().toString(36).substring(2, 7).toUpperCase();
+    const newKey = `REDEEM-${type}-${randomStr}`;
+    
+    setCreditState(prev => ({
+      ...prev,
+      available_keys: [...prev.available_keys, { key: newKey, type, isUsed: false }]
+    }));
+    
+    return newKey;
+  };
+
+  const checkAndDeductCredit = (): boolean => {
+    if (creditState.current_credit <= 0) {
+      alert("Kredit Habis. Silakan masukkan Product Key baru untuk melanjutkan.");
+      setShowRedeemModal(true);
+      return false;
+    }
+    
+    setCreditState(prev => ({
+      ...prev,
+      current_credit: prev.current_credit - 1,
+      total_reports_generated: prev.total_reports_generated + 1
+    }));
+    return true;
+  };
+
+  const handleGenerate = async () => {
+    if (creditState.current_credit <= 0) {
+      checkAndDeductCredit(); // This will trigger the redeem modal
+      return;
+    }
+
+    askConfirmation(
+      "Konfirmasi Pembuatan Laporan",
+      "Anda akan menggunakan 1 kredit untuk membuat Laporan Klinis. Lanjutkan?",
+      async () => {
+        if (!checkAndDeductCredit()) return;
+        
+        setIsGenerating(true);
+        setError('');
+        setIsEditing(false);
+        setActiveTab('report');
+        try {
+          const generatedReport = await generateClinicalReport(formData, settings.therapistName, settings.clinicName, settings.prompts.clinicalReport);
+          resetReport(generatedReport);
+          resetPlan(''); // Clear previous plan when generating new report
+          resetClientReport(''); // Clear previous client report
+          // alert(`Laporan berhasil di-generate! Sisa saldo kredit: ${creditState.current_credit - 1}`);
+        } catch (err: any) {
+          setError(err.message || 'Terjadi kesalahan saat membuat laporan.');
+        } finally {
+          setIsGenerating(false);
+        }
+      }
+    );
   };
 
   const handleGeneratePlan = async () => {
@@ -262,7 +443,7 @@ export default function App() {
     setError('');
     setIsEditingPlan(false);
     try {
-      const generatedPlan = await generateNextSessionPlan(formData, report, planSessionsCount);
+      const generatedPlan = await generateNextSessionPlan(formData, report, planSessionsCount, settings.therapistName, settings.clinicName, settings.prompts.nextSessionPlan);
       resetPlan(generatedPlan);
       setActiveTab('plan');
     } catch (err: any) {
@@ -278,7 +459,7 @@ export default function App() {
     setError('');
     setIsEditingClientReport(false);
     try {
-      const generatedClientReport = await generateClientReport(formData, report);
+      const generatedClientReport = await generateClientReport(formData, report, settings.therapistName, settings.clinicName, settings.prompts.clientReport);
       resetClientReport(generatedClientReport);
       setActiveTab('client');
     } catch (err: any) {
@@ -294,7 +475,7 @@ export default function App() {
     setError('');
     setIsEditingSuggestions(false);
     try {
-      const generatedSuggestions = await generateSuggestionsAndTips(formData, report);
+      const generatedSuggestions = await generateSuggestionsAndTips(formData, report, settings.therapistName, settings.clinicName, settings.prompts.suggestions);
       resetSuggestions(generatedSuggestions);
       setActiveTab('suggestions');
     } catch (err: any) {
@@ -305,48 +486,66 @@ export default function App() {
   };
 
   const handleGenerateAll = async () => {
-    setIsGeneratingAll(true);
-    setError('');
-    setIsEditing(false);
-    setIsEditingPlan(false);
-    setIsEditingClientReport(false);
-    setIsEditingSuggestions(false);
-    setActiveTab('report');
-    
-    try {
-      setIsGenerating(true);
-      const generatedReport = await generateClinicalReport(formData);
-      resetReport(generatedReport);
-      setIsGenerating(false);
-
-      setIsGeneratingPlan(true);
-      const generatedPlan = await generateNextSessionPlan(formData, generatedReport, planSessionsCount);
-      resetPlan(generatedPlan);
-      setIsGeneratingPlan(false);
-
-      setIsGeneratingClientReport(true);
-      const generatedClientReport = await generateClientReport(formData, generatedReport);
-      resetClientReport(generatedClientReport);
-      setIsGeneratingClientReport(false);
-
-      setIsGeneratingSuggestions(true);
-      const generatedSuggestions = await generateSuggestionsAndTips(formData, generatedReport);
-      resetSuggestions(generatedSuggestions);
-      setIsGeneratingSuggestions(false);
-
-      alert('Semua laporan berhasil di-generate!');
-    } catch (err: any) {
-      setError(err.message || 'Terjadi kesalahan saat membuat laporan.');
-      setIsGenerating(false);
-      setIsGeneratingPlan(false);
-      setIsGeneratingClientReport(false);
-      setIsGeneratingSuggestions(false);
-    } finally {
-      setIsGeneratingAll(false);
+    if (creditState.current_credit <= 0) {
+      checkAndDeductCredit(); // This will trigger the redeem modal
+      return;
     }
+
+    askConfirmation(
+      "Konfirmasi Generate Semua",
+      "Anda akan menggunakan 1 kredit untuk membuat semua jenis laporan sekaligus (Laporan Klinis, Rencana Sesi, Laporan Klien, dan Saran). Lanjutkan?",
+      async () => {
+        if (!checkAndDeductCredit()) return;
+
+        setIsGeneratingAll(true);
+        setError('');
+        setIsEditing(false);
+        setIsEditingPlan(false);
+        setIsEditingClientReport(false);
+        setIsEditingSuggestions(false);
+        setActiveTab('report');
+        
+        try {
+          setIsGenerating(true);
+          const generatedReport = await generateClinicalReport(formData, settings.therapistName, settings.clinicName, settings.prompts.clinicalReport);
+          resetReport(generatedReport);
+          setIsGenerating(false);
+
+          setIsGeneratingPlan(true);
+          const generatedPlan = await generateNextSessionPlan(formData, generatedReport, planSessionsCount, settings.therapistName, settings.clinicName, settings.prompts.nextSessionPlan);
+          resetPlan(generatedPlan);
+          setIsGeneratingPlan(false);
+
+          setIsGeneratingClientReport(true);
+          const generatedClientReport = await generateClientReport(formData, generatedReport, settings.therapistName, settings.clinicName, settings.prompts.clientReport);
+          resetClientReport(generatedClientReport);
+          setIsGeneratingClientReport(false);
+
+          setIsGeneratingSuggestions(true);
+          const generatedSuggestions = await generateSuggestionsAndTips(formData, generatedReport, settings.therapistName, settings.clinicName, settings.prompts.suggestions);
+          resetSuggestions(generatedSuggestions);
+          setIsGeneratingSuggestions(false);
+
+          // alert(`Semua laporan berhasil di-generate! Sisa saldo kredit: ${creditState.current_credit - 1}`);
+        } catch (err: any) {
+          setError(err.message || 'Terjadi kesalahan saat membuat laporan.');
+          setIsGenerating(false);
+          setIsGeneratingPlan(false);
+          setIsGeneratingClientReport(false);
+          setIsGeneratingSuggestions(false);
+        } finally {
+          setIsGeneratingAll(false);
+        }
+      }
+    );
   };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!checkAndDeductCredit()) {
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -357,7 +556,7 @@ export default function App() {
         ...prev,
         ...Object.fromEntries(Object.entries(extractedData).filter(([_, v]) => v !== ""))
       }));
-      alert("Catatan berhasil dianalisis dan dimasukkan ke dalam form!");
+      alert(`Catatan berhasil dianalisis dan dimasukkan ke dalam form! Sisa saldo kredit: ${creditState.current_credit - 1}`);
     } catch (err: any) {
       alert(err.message || "Gagal menganalisis gambar.");
     } finally {
@@ -406,10 +605,9 @@ export default function App() {
     element.innerHTML = `
       <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 20px; max-width: 800px; margin: 0 auto;">
         <div style="text-align: center; margin-bottom: 30px; padding-bottom: 15px; border-bottom: 2px solid #4f46e5;">
-          <h1 style="font-size: 24px; color: #1e1b4b; margin: 0 0 5px 0; font-weight: 700;">Rumah Terapi Sameera</h1>
+          <h1 style="font-size: 24px; color: #1e1b4b; margin: 0 0 5px 0; font-weight: 700;">${settings.clinicName || 'Klinik Hipnoterapi'}</h1>
           <p style="font-size: 16px; color: #334155; margin: 0 0 5px 0; font-weight: 500;">Layanan Hipnoterapi dan Konsultasi Psikologi</p>
-          <p style="font-size: 11px; color: #64748b; margin: 0 0 15px 0;">Jl. Ahmad Karim No 18, RT 011 Koto Panjang, Kota Padang Panjang, Sumbar | No HP: 08992666096</p>
-          <div style="display: inline-block; background-color: #e0e7ff; color: #4f46e5; padding: 4px 12px; border-radius: 9999px; font-size: 14px; font-weight: 600;">
+          <div style="display: inline-block; background-color: #e0e7ff; color: #4f46e5; padding: 4px 12px; border-radius: 9999px; font-size: 14px; font-weight: 600; margin-top: 15px;">
             ${title}
           </div>
         </div>
@@ -468,9 +666,8 @@ export default function App() {
       </head>
       <body>
         <div class="header">
-          <h1>Rumah Terapi Sameera</h1>
+          <h1>${settings.clinicName || 'Klinik Hipnoterapi'}</h1>
           <p>Layanan Hipnoterapi dan Konsultasi Psikologi</p>
-          <p style="font-size: 9pt;">Jl. Ahmad Karim No 18, RT 011 Koto Panjang, Kota Padang Panjang, Sumbar | No HP: 08992666096</p>
           <p><strong>${title}</strong></p>
         </div>
         ${rawHtml}
@@ -503,6 +700,21 @@ export default function App() {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowRedeemModal(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-100 text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-900/40 dark:text-indigo-300 dark:hover:bg-indigo-800/60 rounded-full text-sm font-medium transition-colors"
+              title="Redeem Product Key"
+            >
+              <CreditCard className="w-4 h-4" />
+              <span>{creditState.current_credit}</span>
+            </button>
+            <button
+              onClick={() => setShowSettingsModal(true)}
+              className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 dark:text-slate-400 dark:hover:text-indigo-400 dark:hover:bg-slate-800 rounded-lg transition-colors"
+              title="Pengaturan"
+            >
+              <Settings className="w-5 h-5" />
+            </button>
             <button
               onClick={() => setShowHistoryModal(true)}
               className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 dark:text-slate-400 dark:hover:text-indigo-400 dark:hover:bg-slate-800 rounded-lg transition-colors"
@@ -1172,6 +1384,285 @@ export default function App() {
           )}
         </div>
       </div>
+
+      {/* Redeem Modal */}
+      {showRedeemModal && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-md overflow-hidden flex flex-col border border-slate-200 dark:border-slate-800">
+            <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-950">
+              <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                <Key className="w-5 h-5 text-indigo-600 dark:text-indigo-400" /> Redeem Product Key
+              </h2>
+              <button 
+                onClick={() => setShowRedeemModal(false)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+              >
+                Tutup
+              </button>
+            </div>
+            
+            <div className="p-6 space-y-4">
+              <div className="bg-indigo-50 dark:bg-indigo-900/20 p-4 rounded-xl border border-indigo-100 dark:border-indigo-800/30">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm text-indigo-800 dark:text-indigo-300 font-medium">Saldo Kredit Saat Ini:</span>
+                  <span className="text-lg font-bold text-indigo-600 dark:text-indigo-400">{creditState.current_credit}</span>
+                </div>
+                <p className="text-xs text-indigo-700 dark:text-indigo-400">
+                  1 Kredit = 1x Generate Laporan via Foto / Form.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                  Masukkan Product Key
+                </label>
+                <input
+                  type="text"
+                  value={redeemKey}
+                  onChange={(e) => setRedeemKey(e.target.value)}
+                  placeholder="Contoh: REDEEM-A-XXXXX"
+                  className="w-full px-4 py-2 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-shadow text-slate-900 dark:text-slate-100"
+                />
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 flex justify-end gap-2">
+              <button 
+                onClick={() => setShowRedeemModal(false)}
+                className="px-4 py-2 text-slate-600 hover:bg-slate-200 dark:text-slate-300 dark:hover:bg-slate-800 rounded-lg transition-colors font-medium text-sm"
+              >
+                Batal
+              </button>
+              <button 
+                onClick={handleRedeem}
+                disabled={!redeemKey.trim()}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors font-medium text-sm flex items-center gap-2"
+              >
+                <Check className="w-4 h-4" /> Redeem
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal */}
+      {showConfirmModal && confirmConfig && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-sm overflow-hidden flex flex-col border border-slate-200 dark:border-slate-800 animate-in fade-in zoom-in duration-200">
+            <div className="p-6 text-center">
+              <div className="w-16 h-16 bg-indigo-100 dark:bg-indigo-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Sparkles className="w-8 h-8 text-indigo-600 dark:text-indigo-400" />
+              </div>
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">
+                {confirmConfig.title}
+              </h3>
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                {confirmConfig.message}
+              </p>
+            </div>
+            <div className="p-4 bg-slate-50 dark:bg-slate-950 flex gap-3">
+              <button
+                onClick={() => setShowConfirmModal(false)}
+                className="flex-1 px-4 py-2.5 text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-xl transition-colors"
+              >
+                Batal
+              </button>
+              <button
+                onClick={() => {
+                  setShowConfirmModal(false);
+                  confirmConfig.onConfirm();
+                }}
+                className="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-sm transition-colors"
+              >
+                Lanjutkan
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Settings Modal */}
+      {showSettingsModal && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh] border border-slate-200 dark:border-slate-800">
+            <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-950">
+              <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                <Settings className="w-5 h-5 text-indigo-600 dark:text-indigo-400" /> Pengaturan
+              </h2>
+              <button 
+                onClick={() => setShowSettingsModal(false)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+              >
+                Tutup
+              </button>
+            </div>
+            
+            <div className="flex border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-4">
+              <button
+                className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                  settingsTab === 'general'
+                    ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                    : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'
+                }`}
+                onClick={() => setSettingsTab('general')}
+              >
+                Umum
+              </button>
+              <button
+                className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                  settingsTab === 'prompts'
+                    ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                    : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'
+                }`}
+                onClick={() => setSettingsTab('prompts')}
+              >
+                Lanjutan (Prompts)
+              </button>
+              <button
+                className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                  settingsTab === 'keys'
+                    ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                    : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'
+                }`}
+                onClick={() => setSettingsTab('keys')}
+              >
+                Manajemen Key
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto space-y-6 flex-1">
+              {settingsTab === 'general' ? (
+                <div className="space-y-4">
+                  <FormInput 
+                    label="Nama Terapis" 
+                    id="therapistName" 
+                    placeholder="Contoh: Satria Siddik S.Psi, C.T, C.PHt, C.NLP" 
+                    value={settings.therapistName} 
+                    onChange={(e) => setSettings(prev => ({ ...prev, therapistName: e.target.value }))} 
+                  />
+                  <FormInput 
+                    label="Nama Lembaga / Klinik" 
+                    id="clinicName" 
+                    placeholder="Contoh: Rumah Terapi Sameera" 
+                    value={settings.clinicName} 
+                    onChange={(e) => setSettings(prev => ({ ...prev, clinicName: e.target.value }))} 
+                  />
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
+                    Informasi ini akan disinkronkan dan digunakan secara otomatis pada setiap laporan yang di-generate.
+                  </p>
+                </div>
+              ) : settingsTab === 'prompts' ? (
+                <div className="space-y-6">
+                  <div className="bg-indigo-50 dark:bg-indigo-900/20 p-4 rounded-xl border border-indigo-100 dark:border-indigo-800/30">
+                    <h3 className="text-sm font-semibold text-indigo-800 dark:text-indigo-300 mb-2 flex items-center gap-2">
+                      <Lightbulb className="w-4 h-4" /> Panduan Variabel
+                    </h3>
+                    <p className="text-xs text-indigo-700 dark:text-indigo-400 leading-relaxed">
+                      Gunakan variabel berikut dalam prompt Anda. AI akan menggantinya dengan data yang sesuai saat generate:
+                      <br/><br/>
+                      <code className="bg-white dark:bg-slate-800 px-1 py-0.5 rounded text-indigo-600 dark:text-indigo-300 font-mono">{'{{THERAPIST_NAME}}'}</code> - Nama Terapis<br/>
+                      <code className="bg-white dark:bg-slate-800 px-1 py-0.5 rounded text-indigo-600 dark:text-indigo-300 font-mono">{'{{CLINIC_NAME}}'}</code> - Nama Klinik<br/>
+                      <code className="bg-white dark:bg-slate-800 px-1 py-0.5 rounded text-indigo-600 dark:text-indigo-300 font-mono">{'{{CLIENT_NAME}}'}</code> - Nama Klien<br/>
+                      <code className="bg-white dark:bg-slate-800 px-1 py-0.5 rounded text-indigo-600 dark:text-indigo-300 font-mono">{'{{STYLE_INSTRUCTION}}'}</code> - Instruksi Gaya Bahasa<br/>
+                      <code className="bg-white dark:bg-slate-800 px-1 py-0.5 rounded text-indigo-600 dark:text-indigo-300 font-mono">{'{{PLAN_SESSIONS_COUNT}}'}</code> - Jumlah Sesi Rencana (Hanya untuk Rencana Sesi)
+                    </p>
+                  </div>
+
+                  <div className="space-y-4">
+                    <FormTextarea
+                      label="Prompt Laporan Sesi Klinis"
+                      id="promptClinicalReport"
+                      value={settings.prompts.clinicalReport}
+                      onChange={(e) => setSettings(prev => ({ ...prev, prompts: { ...prev.prompts, clinicalReport: e.target.value } }))}
+                      placeholder="Masukkan prompt untuk laporan sesi..."
+                      rows={6}
+                    />
+                    <FormTextarea
+                      label="Prompt Rencana Sesi Selanjutnya"
+                      id="promptNextSessionPlan"
+                      value={settings.prompts.nextSessionPlan}
+                      onChange={(e) => setSettings(prev => ({ ...prev, prompts: { ...prev.prompts, nextSessionPlan: e.target.value } }))}
+                      placeholder="Masukkan prompt untuk rencana sesi..."
+                      rows={6}
+                    />
+                    <FormTextarea
+                      label="Prompt Laporan untuk Klien/Keluarga"
+                      id="promptClientReport"
+                      value={settings.prompts.clientReport}
+                      onChange={(e) => setSettings(prev => ({ ...prev, prompts: { ...prev.prompts, clientReport: e.target.value } }))}
+                      placeholder="Masukkan prompt untuk laporan klien..."
+                      rows={6}
+                    />
+                    <FormTextarea
+                      label="Prompt Saran & Tips"
+                      id="promptSuggestions"
+                      value={settings.prompts.suggestions}
+                      onChange={(e) => setSettings(prev => ({ ...prev, prompts: { ...prev.prompts, suggestions: e.target.value } }))}
+                      placeholder="Masukkan prompt untuk saran & tips..."
+                      rows={6}
+                    />
+                    
+                    <div className="flex justify-end pt-2">
+                      <button
+                        onClick={() => {
+                          if (window.confirm('Apakah Anda yakin ingin mengembalikan semua prompt ke pengaturan awal (default)?')) {
+                            setSettings(prev => ({ ...prev, prompts: DEFAULT_PROMPTS }));
+                          }
+                        }}
+                        className="text-xs text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 font-medium flex items-center gap-1"
+                      >
+                        <Undo2 className="w-3 h-3" /> Kembalikan ke Default
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
+                    <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-4 flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-indigo-600" /> Generate Product Key Baru
+                    </h3>
+                    <div className="grid grid-cols-3 gap-3">
+                      <button
+                        onClick={() => generateNewKey('A')}
+                        className="flex flex-col items-center justify-center p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl hover:border-indigo-500 hover:shadow-md transition-all group"
+                      >
+                        <span className="text-xs font-bold text-slate-400 group-hover:text-indigo-500">TIPE A</span>
+                        <span className="text-lg font-bold text-slate-800 dark:text-slate-200">25</span>
+                        <span className="text-[10px] text-slate-500">Kredit</span>
+                      </button>
+                      <button
+                        onClick={() => generateNewKey('B')}
+                        className="flex flex-col items-center justify-center p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl hover:border-indigo-500 hover:shadow-md transition-all group"
+                      >
+                        <span className="text-xs font-bold text-slate-400 group-hover:text-indigo-500">TIPE B</span>
+                        <span className="text-lg font-bold text-slate-800 dark:text-slate-200">50</span>
+                        <span className="text-[10px] text-slate-500">Kredit</span>
+                      </button>
+                      <button
+                        onClick={() => generateNewKey('C')}
+                        className="flex flex-col items-center justify-center p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl hover:border-indigo-500 hover:shadow-md transition-all group"
+                      >
+                        <span className="text-xs font-bold text-slate-400 group-hover:text-indigo-500">TIPE C</span>
+                        <span className="text-lg font-bold text-slate-800 dark:text-slate-200">100</span>
+                        <span className="text-[10px] text-slate-500">Kredit</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 flex justify-end">
+              <button 
+                onClick={() => setShowSettingsModal(false)}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors font-medium text-sm"
+              >
+                Simpan & Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* History Modal */}
       {showHistoryModal && (
