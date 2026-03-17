@@ -30,6 +30,7 @@ interface HistoryItem {
 interface SettingsData {
   therapistName: string;
   clinicName: string;
+  charCountRange: '250-500' | '500-800' | '800-1000';
   prompts: {
     clinicalReport: string;
     nextSessionPlan: string;
@@ -183,10 +184,10 @@ export default function App() {
   const [settings, setSettings] = useState<SettingsData>({
     therapistName: 'Satria Siddik S.Psi, C.T, C.PHt, C.NLP',
     clinicName: 'Rumah Terapi Sameera',
+    charCountRange: '500-800',
     prompts: DEFAULT_PROMPTS
   });
   const [showSettingsModal, setShowSettingsModal] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<'general' | 'prompts' | 'keys'>('general');
 
   // Credits State
   const [creditState, setCreditState] = useState<CreditState>(defaultCreditState);
@@ -232,6 +233,7 @@ export default function App() {
         const parsed = JSON.parse(savedSettings);
         setSettings({
           ...parsed,
+          charCountRange: parsed.charCountRange || '500-800',
           prompts: parsed.prompts || DEFAULT_PROMPTS
         });
       } catch (e) {
@@ -407,34 +409,20 @@ export default function App() {
   };
 
   const handleGenerate = async () => {
-    if (creditState.current_credit <= 0) {
-      checkAndDeductCredit(); // This will trigger the redeem modal
-      return;
+    setIsGenerating(true);
+    setError('');
+    setIsEditing(false);
+    setActiveTab('report');
+    try {
+      const generatedReport = await generateClinicalReport(formData, settings.therapistName, settings.clinicName, settings.prompts.clinicalReport, settings.charCountRange);
+      resetReport(generatedReport);
+      resetPlan(''); // Clear previous plan when generating new report
+      resetClientReport(''); // Clear previous client report
+    } catch (err: any) {
+      setError(err.message || 'Terjadi kesalahan saat membuat laporan.');
+    } finally {
+      setIsGenerating(false);
     }
-
-    askConfirmation(
-      "Konfirmasi Pembuatan Laporan",
-      "Anda akan menggunakan 1 kredit untuk membuat Laporan Klinis. Lanjutkan?",
-      async () => {
-        if (!checkAndDeductCredit()) return;
-        
-        setIsGenerating(true);
-        setError('');
-        setIsEditing(false);
-        setActiveTab('report');
-        try {
-          const generatedReport = await generateClinicalReport(formData, settings.therapistName, settings.clinicName, settings.prompts.clinicalReport);
-          resetReport(generatedReport);
-          resetPlan(''); // Clear previous plan when generating new report
-          resetClientReport(''); // Clear previous client report
-          // alert(`Laporan berhasil di-generate! Sisa saldo kredit: ${creditState.current_credit - 1}`);
-        } catch (err: any) {
-          setError(err.message || 'Terjadi kesalahan saat membuat laporan.');
-        } finally {
-          setIsGenerating(false);
-        }
-      }
-    );
   };
 
   const handleGeneratePlan = async () => {
@@ -443,7 +431,7 @@ export default function App() {
     setError('');
     setIsEditingPlan(false);
     try {
-      const generatedPlan = await generateNextSessionPlan(formData, report, planSessionsCount, settings.therapistName, settings.clinicName, settings.prompts.nextSessionPlan);
+      const generatedPlan = await generateNextSessionPlan(formData, report, planSessionsCount, settings.therapistName, settings.clinicName, settings.prompts.nextSessionPlan, settings.charCountRange);
       resetPlan(generatedPlan);
       setActiveTab('plan');
     } catch (err: any) {
@@ -459,7 +447,7 @@ export default function App() {
     setError('');
     setIsEditingClientReport(false);
     try {
-      const generatedClientReport = await generateClientReport(formData, report, settings.therapistName, settings.clinicName, settings.prompts.clientReport);
+      const generatedClientReport = await generateClientReport(formData, report, settings.therapistName, settings.clinicName, settings.prompts.clientReport, settings.charCountRange);
       resetClientReport(generatedClientReport);
       setActiveTab('client');
     } catch (err: any) {
@@ -475,7 +463,7 @@ export default function App() {
     setError('');
     setIsEditingSuggestions(false);
     try {
-      const generatedSuggestions = await generateSuggestionsAndTips(formData, report, settings.therapistName, settings.clinicName, settings.prompts.suggestions);
+      const generatedSuggestions = await generateSuggestionsAndTips(formData, report, settings.therapistName, settings.clinicName, settings.prompts.suggestions, settings.charCountRange);
       resetSuggestions(generatedSuggestions);
       setActiveTab('suggestions');
     } catch (err: any) {
@@ -507,22 +495,22 @@ export default function App() {
         
         try {
           setIsGenerating(true);
-          const generatedReport = await generateClinicalReport(formData, settings.therapistName, settings.clinicName, settings.prompts.clinicalReport);
+          const generatedReport = await generateClinicalReport(formData, settings.therapistName, settings.clinicName, settings.prompts.clinicalReport, settings.charCountRange);
           resetReport(generatedReport);
           setIsGenerating(false);
 
           setIsGeneratingPlan(true);
-          const generatedPlan = await generateNextSessionPlan(formData, generatedReport, planSessionsCount, settings.therapistName, settings.clinicName, settings.prompts.nextSessionPlan);
+          const generatedPlan = await generateNextSessionPlan(formData, generatedReport, planSessionsCount, settings.therapistName, settings.clinicName, settings.prompts.nextSessionPlan, settings.charCountRange);
           resetPlan(generatedPlan);
           setIsGeneratingPlan(false);
 
           setIsGeneratingClientReport(true);
-          const generatedClientReport = await generateClientReport(formData, generatedReport, settings.therapistName, settings.clinicName, settings.prompts.clientReport);
+          const generatedClientReport = await generateClientReport(formData, generatedReport, settings.therapistName, settings.clinicName, settings.prompts.clientReport, settings.charCountRange);
           resetClientReport(generatedClientReport);
           setIsGeneratingClientReport(false);
 
           setIsGeneratingSuggestions(true);
-          const generatedSuggestions = await generateSuggestionsAndTips(formData, generatedReport, settings.therapistName, settings.clinicName, settings.prompts.suggestions);
+          const generatedSuggestions = await generateSuggestionsAndTips(formData, generatedReport, settings.therapistName, settings.clinicName, settings.prompts.suggestions, settings.charCountRange);
           resetSuggestions(generatedSuggestions);
           setIsGeneratingSuggestions(false);
 
@@ -552,10 +540,46 @@ export default function App() {
     setIsAnalyzingImage(true);
     try {
       const extractedData = await analyzeTherapistNotes(file);
-      setFormData(prev => ({
-        ...prev,
-        ...Object.fromEntries(Object.entries(extractedData).filter(([_, v]) => v !== ""))
-      }));
+      
+      setFormData(prev => {
+        const updatedData = { ...prev };
+        const textareaFields = [
+          'presentingProblem', 
+          'initialObservation', 
+          'techniquesUsed', 
+          'sessionDynamics', 
+          'postObservation', 
+          'homework', 
+          'nextPlan'
+        ];
+
+        Object.entries(extractedData).forEach(([key, value]) => {
+          const k = key as keyof SessionData;
+          const newValue = String(value || "").trim();
+          
+          if (!newValue) return;
+
+          const currentValue = String(updatedData[k] || "").trim();
+
+          if (textareaFields.includes(k)) {
+            // Untuk field teks panjang, tambahkan jika belum ada informasi yang sama
+            if (!currentValue) {
+              updatedData[k] = newValue;
+            } else if (!currentValue.toLowerCase().includes(newValue.toLowerCase())) {
+              // Tambahkan dengan pemisah jika informasi baru unik
+              updatedData[k] = `${currentValue}\n\n[Hasil Scan]: ${newValue}`;
+            }
+          } else {
+            // Untuk field input pendek (nama, umur, gender, SUD), isi hanya jika masih kosong
+            if (!currentValue) {
+              updatedData[k] = newValue;
+            }
+          }
+        });
+        
+        return updatedData;
+      });
+
       alert(`Catatan berhasil dianalisis dan dimasukkan ke dalam form! Sisa saldo kredit: ${creditState.current_credit - 1}`);
     } catch (err: any) {
       alert(err.message || "Gagal menganalisis gambar.");
@@ -1382,6 +1406,13 @@ export default function App() {
               )}
             </div>
           )}
+          
+          <footer className="mt-12 py-6 border-t border-slate-200 dark:border-slate-800 text-center print:hidden">
+            <p className="text-sm text-slate-500 dark:text-slate-400 flex items-center justify-center gap-2">
+              <Sparkles className="w-4 h-4 text-indigo-500" />
+              Aplikasi ini dikembangkan oleh <span className="font-bold text-indigo-600 dark:text-indigo-400">Soultiva AI Dev</span>
+            </p>
+          </footer>
         </div>
       </div>
 
@@ -1496,161 +1527,44 @@ export default function App() {
                 Tutup
               </button>
             </div>
-            
-            <div className="flex border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-4">
-              <button
-                className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-                  settingsTab === 'general'
-                    ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
-                    : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'
-                }`}
-                onClick={() => setSettingsTab('general')}
-              >
-                Umum
-              </button>
-              <button
-                className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-                  settingsTab === 'prompts'
-                    ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
-                    : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'
-                }`}
-                onClick={() => setSettingsTab('prompts')}
-              >
-                Lanjutan (Prompts)
-              </button>
-              <button
-                className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-                  settingsTab === 'keys'
-                    ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
-                    : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'
-                }`}
-                onClick={() => setSettingsTab('keys')}
-              >
-                Manajemen Key
-              </button>
-            </div>
 
             <div className="p-6 overflow-y-auto space-y-6 flex-1">
-              {settingsTab === 'general' ? (
-                <div className="space-y-4">
-                  <FormInput 
-                    label="Nama Terapis" 
-                    id="therapistName" 
-                    placeholder="Contoh: Satria Siddik S.Psi, C.T, C.PHt, C.NLP" 
-                    value={settings.therapistName} 
-                    onChange={(e) => setSettings(prev => ({ ...prev, therapistName: e.target.value }))} 
-                  />
-                  <FormInput 
-                    label="Nama Lembaga / Klinik" 
-                    id="clinicName" 
-                    placeholder="Contoh: Rumah Terapi Sameera" 
-                    value={settings.clinicName} 
-                    onChange={(e) => setSettings(prev => ({ ...prev, clinicName: e.target.value }))} 
-                  />
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
-                    Informasi ini akan disinkronkan dan digunakan secara otomatis pada setiap laporan yang di-generate.
+              <div className="space-y-4">
+                <FormInput 
+                  label="Nama Terapis" 
+                  id="therapistName" 
+                  placeholder="Contoh: Satria Siddik S.Psi, C.T, C.PHt, C.NLP" 
+                  value={settings.therapistName} 
+                  onChange={(e) => setSettings(prev => ({ ...prev, therapistName: e.target.value }))} 
+                />
+                <FormInput 
+                  label="Nama Lembaga / Klinik" 
+                  id="clinicName" 
+                  placeholder="Contoh: Rumah Terapi Sameera" 
+                  value={settings.clinicName} 
+                  onChange={(e) => setSettings(prev => ({ ...prev, clinicName: e.target.value }))} 
+                />
+                <FormSelect
+                  label="Batasan Jumlah Karakter Laporan"
+                  id="charCountRange"
+                  value={settings.charCountRange}
+                  onChange={(e) => setSettings(prev => ({ ...prev, charCountRange: e.target.value as any }))}
+                  options={[
+                    { value: '250-500', label: '250 - 500 Karakter (Hemat Token)' },
+                    { value: '500-800', label: '500 - 800 Karakter (Standar)' },
+                    { value: '800-1000', label: '800 - 1000 Karakter (Lengkap)' }
+                  ]}
+                />
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
+                  Informasi ini akan disinkronkan dan digunakan secara otomatis pada setiap laporan yang di-generate.
+                </p>
+                
+                <div className="mt-8 pt-6 border-t border-slate-100 dark:border-slate-800 text-center">
+                  <p className="text-[10px] font-semibold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
+                    Developed by Soultiva AI Dev
                   </p>
                 </div>
-              ) : settingsTab === 'prompts' ? (
-                <div className="space-y-6">
-                  <div className="bg-indigo-50 dark:bg-indigo-900/20 p-4 rounded-xl border border-indigo-100 dark:border-indigo-800/30">
-                    <h3 className="text-sm font-semibold text-indigo-800 dark:text-indigo-300 mb-2 flex items-center gap-2">
-                      <Lightbulb className="w-4 h-4" /> Panduan Variabel
-                    </h3>
-                    <p className="text-xs text-indigo-700 dark:text-indigo-400 leading-relaxed">
-                      Gunakan variabel berikut dalam prompt Anda. AI akan menggantinya dengan data yang sesuai saat generate:
-                      <br/><br/>
-                      <code className="bg-white dark:bg-slate-800 px-1 py-0.5 rounded text-indigo-600 dark:text-indigo-300 font-mono">{'{{THERAPIST_NAME}}'}</code> - Nama Terapis<br/>
-                      <code className="bg-white dark:bg-slate-800 px-1 py-0.5 rounded text-indigo-600 dark:text-indigo-300 font-mono">{'{{CLINIC_NAME}}'}</code> - Nama Klinik<br/>
-                      <code className="bg-white dark:bg-slate-800 px-1 py-0.5 rounded text-indigo-600 dark:text-indigo-300 font-mono">{'{{CLIENT_NAME}}'}</code> - Nama Klien<br/>
-                      <code className="bg-white dark:bg-slate-800 px-1 py-0.5 rounded text-indigo-600 dark:text-indigo-300 font-mono">{'{{STYLE_INSTRUCTION}}'}</code> - Instruksi Gaya Bahasa<br/>
-                      <code className="bg-white dark:bg-slate-800 px-1 py-0.5 rounded text-indigo-600 dark:text-indigo-300 font-mono">{'{{PLAN_SESSIONS_COUNT}}'}</code> - Jumlah Sesi Rencana (Hanya untuk Rencana Sesi)
-                    </p>
-                  </div>
-
-                  <div className="space-y-4">
-                    <FormTextarea
-                      label="Prompt Laporan Sesi Klinis"
-                      id="promptClinicalReport"
-                      value={settings.prompts.clinicalReport}
-                      onChange={(e) => setSettings(prev => ({ ...prev, prompts: { ...prev.prompts, clinicalReport: e.target.value } }))}
-                      placeholder="Masukkan prompt untuk laporan sesi..."
-                      rows={6}
-                    />
-                    <FormTextarea
-                      label="Prompt Rencana Sesi Selanjutnya"
-                      id="promptNextSessionPlan"
-                      value={settings.prompts.nextSessionPlan}
-                      onChange={(e) => setSettings(prev => ({ ...prev, prompts: { ...prev.prompts, nextSessionPlan: e.target.value } }))}
-                      placeholder="Masukkan prompt untuk rencana sesi..."
-                      rows={6}
-                    />
-                    <FormTextarea
-                      label="Prompt Laporan untuk Klien/Keluarga"
-                      id="promptClientReport"
-                      value={settings.prompts.clientReport}
-                      onChange={(e) => setSettings(prev => ({ ...prev, prompts: { ...prev.prompts, clientReport: e.target.value } }))}
-                      placeholder="Masukkan prompt untuk laporan klien..."
-                      rows={6}
-                    />
-                    <FormTextarea
-                      label="Prompt Saran & Tips"
-                      id="promptSuggestions"
-                      value={settings.prompts.suggestions}
-                      onChange={(e) => setSettings(prev => ({ ...prev, prompts: { ...prev.prompts, suggestions: e.target.value } }))}
-                      placeholder="Masukkan prompt untuk saran & tips..."
-                      rows={6}
-                    />
-                    
-                    <div className="flex justify-end pt-2">
-                      <button
-                        onClick={() => {
-                          if (window.confirm('Apakah Anda yakin ingin mengembalikan semua prompt ke pengaturan awal (default)?')) {
-                            setSettings(prev => ({ ...prev, prompts: DEFAULT_PROMPTS }));
-                          }
-                        }}
-                        className="text-xs text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 font-medium flex items-center gap-1"
-                      >
-                        <Undo2 className="w-3 h-3" /> Kembalikan ke Default
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-6">
-                  <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
-                    <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-4 flex items-center gap-2">
-                      <Sparkles className="w-4 h-4 text-indigo-600" /> Generate Product Key Baru
-                    </h3>
-                    <div className="grid grid-cols-3 gap-3">
-                      <button
-                        onClick={() => generateNewKey('A')}
-                        className="flex flex-col items-center justify-center p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl hover:border-indigo-500 hover:shadow-md transition-all group"
-                      >
-                        <span className="text-xs font-bold text-slate-400 group-hover:text-indigo-500">TIPE A</span>
-                        <span className="text-lg font-bold text-slate-800 dark:text-slate-200">25</span>
-                        <span className="text-[10px] text-slate-500">Kredit</span>
-                      </button>
-                      <button
-                        onClick={() => generateNewKey('B')}
-                        className="flex flex-col items-center justify-center p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl hover:border-indigo-500 hover:shadow-md transition-all group"
-                      >
-                        <span className="text-xs font-bold text-slate-400 group-hover:text-indigo-500">TIPE B</span>
-                        <span className="text-lg font-bold text-slate-800 dark:text-slate-200">50</span>
-                        <span className="text-[10px] text-slate-500">Kredit</span>
-                      </button>
-                      <button
-                        onClick={() => generateNewKey('C')}
-                        className="flex flex-col items-center justify-center p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl hover:border-indigo-500 hover:shadow-md transition-all group"
-                      >
-                        <span className="text-xs font-bold text-slate-400 group-hover:text-indigo-500">TIPE C</span>
-                        <span className="text-lg font-bold text-slate-800 dark:text-slate-200">100</span>
-                        <span className="text-[10px] text-slate-500">Kredit</span>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
+              </div>
             </div>
             <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 flex justify-end">
               <button 

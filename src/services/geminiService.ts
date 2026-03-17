@@ -92,7 +92,8 @@ FORMAT LAPORAN YANG DIHARAPKAN (Gunakan Markdown dengan spasi yang konsisten, he
 **Terapis:**
 {{THERAPIST_NAME}}
 
-Pastikan laporannya mengalir dengan baik, tidak hanya sekadar menyalin poin-poin di atas, tetapi merangkainya menjadi narasi klinis yang utuh dan profesional. Jika ada data yang kosong (-), abaikan atau sesuaikan narasinya dengan wajar.`,
+Pastikan laporannya mengalir dengan baik, tidak hanya sekadar menyalin poin-poin di atas, tetapi merangkainya menjadi narasi klinis yang utuh dan profesional. Jika ada data yang kosong (-), abaikan atau sesuaikan narasinya dengan wajar.
+{{CHAR_COUNT_INSTRUCTION}}`,
   nextSessionPlan: `Anda adalah seorang hipnoterapis profesional ({{THERAPIST_NAME}}).
 Berdasarkan data sesi dan laporan sesi sebelumnya di bawah ini, buatkan Perencanaan Sesi Lanjutan (Treatment Plan) jangka panjang yang komprehensif, terstruktur, dan profesional untuk {{PLAN_SESSIONS_COUNT}} sesi ke depan.
 
@@ -118,7 +119,8 @@ Untuk masing-masing sesi lanjutan (Sesi 1 dari rencana, Sesi 2 dari rencana, dst
 
 Berikan juga ringkasan tujuan akhir (Ultimate Goal) dari seluruh rangkaian {{PLAN_SESSIONS_COUNT}} sesi ini di bagian awal dokumen.
 
-Format dalam Markdown yang rapi dengan heading (gunakan ## untuk pemisah antar sesi), bullet points, dan bahasa Indonesia klinis yang profesional.`,
+Format dalam Markdown yang rapi dengan heading (gunakan ## untuk pemisah antar sesi), bullet points, dan bahasa Indonesia klinis yang profesional.
+{{CHAR_COUNT_INSTRUCTION}}`,
   clientReport: `Anda adalah seorang hipnoterapis profesional ({{THERAPIST_NAME}}).
 Berdasarkan laporan sesi klinis di bawah ini, buatkan "Ringkasan Sesi untuk Klien" yang akan diberikan langsung kepada klien.
 
@@ -136,7 +138,8 @@ Buat ringkasan sesi dengan kriteria berikut:
    - Pengingat Tugas/PR (Homework) yang harus dilakukan klien di rumah.
    - Harapan atau pesan positif untuk sesi selanjutnya.
 
-Format dalam Markdown yang rapi, ramah, dan profesional.`,
+Format dalam Markdown yang rapi, ramah, dan profesional.
+{{CHAR_COUNT_INSTRUCTION}}`,
   suggestions: `Anda adalah seorang hipnoterapis profesional ({{THERAPIST_NAME}}).
 Berdasarkan data sesi dan laporan sesi di bawah ini, buatkan dokumen "Saran & Tips untuk Klien" yang berisi panduan praktis untuk membantu proses pemulihan atau pengembangan diri klien di luar jam sesi.
 
@@ -155,7 +158,8 @@ Buatlah daftar saran dan tips praktis yang mencakup:
 3. Teknik Self-Help (Teknik sederhana yang bisa dilakukan sendiri jika keluhan muncul kembali)
 4. Pesan Motivasi (Kata-kata penguat untuk klien)
 
-Format dalam Markdown yang rapi, menggunakan bullet points, dan bahasa Indonesia yang sangat mendukung (supportive), memberdayakan (empowering), dan mudah dipahami.`
+Format dalam Markdown yang rapi, menggunakan bullet points, dan bahasa Indonesia yang sangat mendukung (supportive), memberdayakan (empowering), dan mudah dipahami.
+{{CHAR_COUNT_INSTRUCTION}}`
 };
 
 function buildPrompt(template: string, data: SessionData, therapistName: string, clinicName: string, extra: any = {}) {
@@ -164,6 +168,8 @@ function buildPrompt(template: string, data: SessionData, therapistName: string,
     data.reportStyle === 'Concise' ? 'Buat laporan yang sangat padat, singkat, dan langsung pada intinya (bullet points dominan).' :
     data.reportStyle === 'Empathy-focused' ? 'Buat laporan yang menonjolkan empati, dinamika emosional klien, dan proses terapeutik yang mendalam.' :
     'Buat laporan yang detail, komprehensif, dan mencakup semua aspek klinis secara menyeluruh.';
+
+  const charCountInstruction = extra.charCountRange ? `PENTING: Batasi panjang teks laporan ini agar berada dalam rentang ${extra.charCountRange} karakter.` : '';
 
   const replacements: Record<string, string> = {
     '{{THERAPIST_NAME}}': therapistName || '-',
@@ -186,7 +192,8 @@ function buildPrompt(template: string, data: SessionData, therapistName: string,
     '{{NEXT_PLAN}}': data.nextPlan || '-',
     '{{PREVIOUS_REPORT}}': extra.report || '-',
     '{{PLAN_SESSIONS_COUNT}}': extra.planSessionsCount?.toString() || '1',
-    '{{STYLE_INSTRUCTION}}': styleInstruction
+    '{{STYLE_INSTRUCTION}}': styleInstruction,
+    '{{CHAR_COUNT_INSTRUCTION}}': charCountInstruction
   };
 
   for (const [key, value] of Object.entries(replacements)) {
@@ -273,9 +280,9 @@ Jika ada field yang tidak ditemukan di catatan, kosongkan saja string-nya ("").`
   }
 }
 
-export async function generateNextSessionPlan(data: SessionData, report: string, planSessionsCount: number = 1, therapistName: string, clinicName: string, customPrompt?: string): Promise<string> {
+export async function generateNextSessionPlan(data: SessionData, report: string, planSessionsCount: number = 1, therapistName: string, clinicName: string, customPrompt?: string, charCountRange?: string): Promise<string> {
   const template = customPrompt || DEFAULT_PROMPTS.nextSessionPlan;
-  const prompt = buildPrompt(template, data, therapistName, clinicName, { report, planSessionsCount });
+  const prompt = buildPrompt(template, data, therapistName, clinicName, { report, planSessionsCount, charCountRange });
 
   try {
     const response = await ai.models.generateContent({
@@ -293,9 +300,9 @@ export async function generateNextSessionPlan(data: SessionData, report: string,
   }
 }
 
-export async function generateClinicalReport(data: SessionData, therapistName: string, clinicName: string, customPrompt?: string): Promise<string> {
+export async function generateClinicalReport(data: SessionData, therapistName: string, clinicName: string, customPrompt?: string, charCountRange?: string): Promise<string> {
   const template = customPrompt || DEFAULT_PROMPTS.clinicalReport;
-  const prompt = buildPrompt(template, data, therapistName, clinicName);
+  const prompt = buildPrompt(template, data, therapistName, clinicName, { charCountRange });
 
   try {
     const response = await ai.models.generateContent({
@@ -313,9 +320,9 @@ export async function generateClinicalReport(data: SessionData, therapistName: s
   }
 }
 
-export async function generateClientReport(data: SessionData, report: string, therapistName: string, clinicName: string, customPrompt?: string): Promise<string> {
+export async function generateClientReport(data: SessionData, report: string, therapistName: string, clinicName: string, customPrompt?: string, charCountRange?: string): Promise<string> {
   const template = customPrompt || DEFAULT_PROMPTS.clientReport;
-  const prompt = buildPrompt(template, data, therapistName, clinicName, { report });
+  const prompt = buildPrompt(template, data, therapistName, clinicName, { report, charCountRange });
 
   try {
     const response = await ai.models.generateContent({
@@ -333,9 +340,9 @@ export async function generateClientReport(data: SessionData, report: string, th
   }
 }
 
-export async function generateSuggestionsAndTips(data: SessionData, report: string, therapistName: string, clinicName: string, customPrompt?: string): Promise<string> {
+export async function generateSuggestionsAndTips(data: SessionData, report: string, therapistName: string, clinicName: string, customPrompt?: string, charCountRange?: string): Promise<string> {
   const template = customPrompt || DEFAULT_PROMPTS.suggestions;
-  const prompt = buildPrompt(template, data, therapistName, clinicName, { report });
+  const prompt = buildPrompt(template, data, therapistName, clinicName, { report, charCountRange });
 
   try {
     const response = await ai.models.generateContent({
