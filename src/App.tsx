@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { FormInput, FormTextarea, FormSelect } from './components/FormInput';
-import { generateClinicalReport, analyzeTherapistNotes, generateNextSessionPlan, generateClientReport, generateSuggestionsAndTips, SessionData, DEFAULT_PROMPTS } from './services/geminiService';
+import { generateClinicalReport, analyzeTherapistNotes, generateNextSessionPlan, generateClientReport, generateSuggestionsAndTips, SessionData, DEFAULT_PROMPTS, ApiSettings, fetchLiteLLMModels, LITELLM_DEFAULT_BASE_URL } from './services/geminiService';
+import { logger } from './services/logger';
 import Markdown from 'react-markdown';
 import { marked } from 'marked';
 import { useUndo } from './hooks/useUndo';
@@ -9,10 +10,18 @@ import { Copy, Download, Loader2, Sparkles, User as UserIcon, Activity, BrainCir
 import html2pdf from 'html2pdf.js';
 import { saveAs } from 'file-saver';
 
+declare global {
+  interface Window {
+    aistudio: {
+      hasSelectedApiKey: () => Promise<boolean>;
+      openSelectKey: () => Promise<void>;
+    };
+  }
+}
+
 const STORAGE_KEY = 'theragen_autosave';
 const HISTORY_KEY = 'theragen_history';
 const SETTINGS_KEY = 'theragen_settings';
-const CREDITS_KEY = 'theragen_credits';
 
 interface HistoryItem {
   id: string;
@@ -30,8 +39,9 @@ interface HistoryItem {
 interface SettingsData {
   therapistName: string;
   clinicName: string;
-  charCountRange: '250-500' | '500-800' | '800-1000' | 'unlimited';
+  charCountRange: '500-800' | '800-1500' | '1500-2000' | 'unlimited';
   modelPreference: 'Pro' | 'Flash';
+  apiSettings: ApiSettings;
   prompts: {
     clinicalReport: string;
     nextSessionPlan: string;
@@ -39,38 +49,6 @@ interface SettingsData {
     suggestions: string;
   };
 }
-
-interface ProductKey {
-  key: string;
-  type: 'A' | 'B' | 'C';
-  isUsed: boolean;
-  redeemedAt?: string;
-}
-
-interface CreditState {
-  user_status: "Active" | "Inactive";
-  current_credit: number;
-  total_reports_generated: number;
-  last_key_used: string | null;
-  available_keys: ProductKey[];
-}
-
-const initialKeys: ProductKey[] = [
-  // Type A (100 Keys)
-  ...["K7J2M", "P4N9B", "X1R6V", "L8T3C", "H5D2G", "Q9F4K", "Z2M7P", "W6S1N", "B3V8R", "J7X4L", "M2K9S", "T5P1D", "F8R4H", "G3N7W", "V6C2Y", "D9B5Q", "S1L8T", "Z4H3M", "P7K2V", "X0N9R", "W2F5G", "L7M3P", "K4T8S", "J1V6D", "H9C2X", "G5B7N", "F2R4Q", "D8S1L", "S3P9W", "V7K5M", "B1N4T", "N6H2G", "M9D8V", "Q4X7Z", "P2L5K", "T8R3C", "X5V1M", "W9N7B", "L3K2P", "K6H4D", "J8S1G", "H2T5V", "G7M9Q", "F4P3Z", "D1B8N", "S6X2W", "V9L7C", "B4R5H", "N2K1S", "M7D3T", "Q5P8V", "P9N4G", "T1L2K", "X6R7M", "W3H9D", "L8S5Z", "K2V4B", "J5M1P", "H7N3T", "G1K8Q", "F9D2V", "D4R6S", "S2P5W", "V8H7L", "B3M9N", "N7K4T", "M1V2D", "Q6S8P", "P3H5G", "T9N1B", "X4L7K", "W2R3M", "L5D9V", "K1P4S", "J7B2H", "H3N6Q", "G8V1T", "F5M4P", "D2K7S", "S9D3V", "V4R8L", "B6P1M", "N1H5G", "M8N2T", "Q3K9S", "P7V4D", "T2S6P", "X9H1G", "W5N3B", "L1L8K", "K7R2M", "J4D5V", "H9P6S", "G2B1H", "F7N4Q", "D3V9T", "S8M5P", "V1K2S", "B5D3V", "N9R7L"].map(k => ({ key: `REDEEM-A-${k}`, type: 'A' as const, isUsed: false })),
-  // Type B (100 Keys)
-  ...["M7P2X", "V4K9F", "C1Y6W", "R8T3N", "D5J2H", "Z9M7P", "F6W1K", "N3V8Q", "Y2L5T", "X8F4M", "G1S7R", "H4D2N", "K9P5V", "L2T8M", "Q5N3X", "P1R6W", "T7V4K", "X3M9B", "W6L1S", "J2H5D", "S8G4R", "N1N7Q", "M4K2P", "V9D5T", "C6R8V", "R1P3W", "D7S5H", "Z2M9K", "F5V1N", "N8T4Q", "Y1L6S", "X4F2M", "G9S3R", "H2D7N", "K5P1V", "L8T6M", "Q3N9X", "P7R2W", "T1V5K", "X6M8B", "W9L4S", "J5H1D", "S2G7R", "N4N3Q", "M9K6P", "V1D8T", "C4R2V", "R7P5W", "D2S9H", "Z5M1K", "F8V4N", "N1T7Q", "Y4L2S", "X9F5M", "G2S8R", "H7D3N", "K1P6V", "L4T9M", "Q9N2X", "P5R1W", "T3V7K", "X8M4B", "W1L5S", "J7H2D", "S4G9R", "N9N6Q", "M2K1P", "V5D4T", "C9R7V", "R2P8W", "D4S1H", "Z7M3K", "F1V6N", "N4T2Q", "Y9L5S", "X2F8M", "G5S1R", "H8D4N", "K2P7V", "L7T3M", "Q1N6X", "P4R9W", "T9V2K", "X5M7B", "W2L1S", "J8H5D", "S1G4R", "N6N7Q", "M3K2P", "V8D5T", "C1R8V", "R4P3W", "D9S5H", "Z3M9K", "F7V1N", "N2T4Q", "Y5L6S", "X1F2M", "G8S3R"].map(k => ({ key: `REDEEM-B-${k}`, type: 'B' as const, isUsed: false })),
-  // Type C (100 Keys)
-  ...["K9F2V", "P4M7Z", "W1Y6C", "N8T3R", "H5J2D", "M9P7X", "K6W1F", "Q3V8N", "T2L5Y", "F8M4X", "G1N7S", "H4R2D", "K9P5V", "L2W8M", "Q5T3X", "P1N6W", "T7V4K", "X3M9B", "W6L1S", "J2H5D", "S8G4R", "N1N7Q", "M4K2P", "V9D5T", "C6R8V", "R1P3W", "D7S5H", "Z2M9K", "F5V1N", "N8T4Q", "Y1L6S", "X4F2M", "G9S3R", "H2D7N", "K5P1V", "L8T6M", "Q3N9X", "P7R2W", "T1V5K", "X6M8B", "W9L4S", "J5H1D", "S2G7R", "N4N3Q", "M9K6P", "V1D8T", "C4R2V", "R7P5W", "D2S9H", "Z5M1K", "F8V4N", "N1T7Q", "Y4L2S", "X9F5M", "G2S8R", "H7D3N", "K1P6V", "L4T9M", "Q9N2X", "P5R1W", "T3V7K", "X8M4B", "W1L5S", "J7H2D", "S4G9R", "N9N6Q", "M2K1P", "V5D4T", "C9R7V", "R2P8W", "D4S1H", "Z7M3K", "F1V6N", "N4T2Q", "Y9L5S", "X2F8M", "G5S1R", "H8D4N", "K2P7V", "L7T3M", "Q1N6X", "P4R9W", "T9V2K", "X5M7B", "W2L1S", "J8H5D", "S1G4R", "N6N7Q", "M3K2P", "V8D5T", "C1R8V", "R4P3W", "D9S5H", "Z3M9K", "F7V1N", "N2T4Q", "Y5L6S", "X1F2M", "G8S3R", "H3D4N"].map(k => ({ key: `REDEEM-C-${k}`, type: 'C' as const, isUsed: false })),
-];
-
-const defaultCreditState: CreditState = {
-  user_status: "Inactive",
-  current_credit: 0,
-  total_reports_generated: 0,
-  last_key_used: null,
-  available_keys: initialKeys
-};
 
 const initialObservationOptions = [
   "Tampak tegang", "Napas pendek/dangkal", "Sering menunduk", "Kontak mata kurang",
@@ -190,14 +168,18 @@ export default function App() {
     clinicName: 'Rumah Terapi Sameera',
     charCountRange: '500-800',
     modelPreference: 'Pro',
+    apiSettings: {
+      provider: 'Gemini',
+      liteLLMKey: '',
+      liteLLMBaseUrl: LITELLM_DEFAULT_BASE_URL,
+      selectedModel: 'gemini-3-flash-preview'
+    },
     prompts: DEFAULT_PROMPTS
   });
   const [showSettingsModal, setShowSettingsModal] = useState(false);
-
-  // Credits State
-  const [creditState, setCreditState] = useState<CreditState>(defaultCreditState);
-  const [showRedeemModal, setShowRedeemModal] = useState(false);
-  const [redeemKey, setRedeemKey] = useState("");
+  const [liteLLMModels, setLiteLLMModels] = useState<string[]>([]);
+  const [isFetchingModels, setIsFetchingModels] = useState(false);
+  const [showLogsModal, setShowLogsModal] = useState(false);
 
   // Cancellation State
   const cancelRef = React.useRef(false);
@@ -243,19 +225,16 @@ export default function App() {
           ...parsed,
           charCountRange: parsed.charCountRange || '500-800',
           modelPreference: parsed.modelPreference || 'Pro',
+          apiSettings: parsed.apiSettings || {
+            provider: 'Gemini',
+            liteLLMKey: '',
+            liteLLMBaseUrl: LITELLM_DEFAULT_BASE_URL,
+            selectedModel: 'gemini-3-flash-preview'
+          },
           prompts: parsed.prompts || DEFAULT_PROMPTS
         });
       } catch (e) {
         console.error("Failed to parse settings data");
-      }
-    }
-
-    const savedCredits = localStorage.getItem(CREDITS_KEY);
-    if (savedCredits) {
-      try {
-        setCreditState(JSON.parse(savedCredits));
-      } catch (e) {
-        console.error("Failed to parse credits data");
       }
     }
   }, []);
@@ -265,10 +244,33 @@ export default function App() {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
   }, [settings]);
 
-  // Save credits to LocalStorage
   useEffect(() => {
-    localStorage.setItem(CREDITS_KEY, JSON.stringify(creditState));
-  }, [creditState]);
+    if (settings.apiSettings.provider === 'LiteLLM' && settings.apiSettings.liteLLMKey) {
+      const fetchModels = async () => {
+        setIsFetchingModels(true);
+        try {
+          const models = await fetchLiteLLMModels(settings.apiSettings.liteLLMKey, settings.apiSettings.liteLLMBaseUrl);
+          setLiteLLMModels(models);
+          
+          // If current selected model is not in the list, select the first one
+          if (models.length > 0 && !models.includes(settings.apiSettings.selectedModel)) {
+            setSettings(prev => ({
+              ...prev,
+              apiSettings: {
+                ...prev.apiSettings,
+                selectedModel: models[0]
+              }
+            }));
+          }
+        } catch (err) {
+          logger.error("Failed to fetch LiteLLM models in App.tsx", err);
+        } finally {
+          setIsFetchingModels(false);
+        }
+      };
+      fetchModels();
+    }
+  }, [settings.apiSettings.provider, settings.apiSettings.liteLLMKey, settings.apiSettings.liteLLMBaseUrl]);
 
   // Sync Dark Mode with DOM
   useEffect(() => {
@@ -349,69 +351,6 @@ export default function App() {
     });
   };
 
-  const handleRedeem = () => {
-    const inputKey = redeemKey.trim().toUpperCase();
-    
-    const keyData = creditState.available_keys.find(k => k.key === inputKey);
-
-    if (!keyData) {
-      alert('Product Key tidak valid atau tidak ditemukan.');
-      return;
-    }
-
-    if (keyData.isUsed) {
-      alert('Product Key ini sudah pernah digunakan.');
-      return;
-    }
-
-    let addedCredits = 0;
-    if (keyData.type === 'A') addedCredits = 25;
-    else if (keyData.type === 'B') addedCredits = 50;
-    else if (keyData.type === 'C') addedCredits = 100;
-
-    if (addedCredits > 0) {
-      setCreditState(prev => ({
-        ...prev,
-        user_status: "Active",
-        current_credit: prev.current_credit + addedCredits,
-        last_key_used: inputKey,
-        available_keys: prev.available_keys.map(k => 
-          k.key === inputKey ? { ...k, isUsed: true, redeemedAt: new Date().toISOString() } : k
-        )
-      }));
-      alert(`Berhasil! ${addedCredits} kredit telah ditambahkan. Saldo saat ini: ${creditState.current_credit + addedCredits}`);
-      setShowRedeemModal(false);
-      setRedeemKey("");
-    }
-  };
-
-  const generateNewKey = (type: 'A' | 'B' | 'C') => {
-    const randomStr = Math.random().toString(36).substring(2, 7).toUpperCase();
-    const newKey = `REDEEM-${type}-${randomStr}`;
-    
-    setCreditState(prev => ({
-      ...prev,
-      available_keys: [...prev.available_keys, { key: newKey, type, isUsed: false }]
-    }));
-    
-    return newKey;
-  };
-
-  const checkAndDeductCredit = (): boolean => {
-    if (creditState.current_credit <= 0) {
-      alert("Kredit Habis. Silakan masukkan Product Key baru untuk melanjutkan.");
-      setShowRedeemModal(true);
-      return false;
-    }
-    
-    setCreditState(prev => ({
-      ...prev,
-      current_credit: prev.current_credit - 1,
-      total_reports_generated: prev.total_reports_generated + 1
-    }));
-    return true;
-  };
-
   const handleCancel = () => {
     cancelRef.current = true;
     setIsGenerating(false);
@@ -429,6 +368,13 @@ export default function App() {
     setIsEditing(false);
     setActiveTab('report');
     resetReport(''); // Clear previous report
+    
+    // Update selected model based on preference if using Gemini
+    const apiSettings = { ...settings.apiSettings };
+    if (apiSettings.provider === 'Gemini') {
+      apiSettings.selectedModel = settings.modelPreference === 'Flash' ? "gemini-3-flash-preview" : "gemini-3.1-pro-preview";
+    }
+
     try {
       let fullText = '';
       const generatedReport = await generateClinicalReport(
@@ -442,7 +388,7 @@ export default function App() {
           fullText += chunk;
           resetReport(fullText);
         },
-        settings.modelPreference
+        apiSettings
       );
       if (cancelRef.current) return;
       resetReport(generatedReport);
@@ -463,8 +409,14 @@ export default function App() {
     setIsGeneratingPlan(true);
     setError('');
     setIsEditingPlan(false);
+
+    const apiSettings = { ...settings.apiSettings };
+    if (apiSettings.provider === 'Gemini') {
+      apiSettings.selectedModel = settings.modelPreference === 'Flash' ? "gemini-3-flash-preview" : "gemini-3.1-pro-preview";
+    }
+
     try {
-      const generatedPlan = await generateNextSessionPlan(formData, report, planSessionsCount, settings.therapistName, settings.clinicName, settings.prompts.nextSessionPlan, settings.charCountRange, settings.modelPreference);
+      const generatedPlan = await generateNextSessionPlan(formData, report, planSessionsCount, settings.therapistName, settings.clinicName, settings.prompts.nextSessionPlan, settings.charCountRange, apiSettings);
       if (cancelRef.current) return;
       resetPlan(generatedPlan);
       setActiveTab('plan');
@@ -483,8 +435,14 @@ export default function App() {
     setIsGeneratingClientReport(true);
     setError('');
     setIsEditingClientReport(false);
+
+    const apiSettings = { ...settings.apiSettings };
+    if (apiSettings.provider === 'Gemini') {
+      apiSettings.selectedModel = settings.modelPreference === 'Flash' ? "gemini-3-flash-preview" : "gemini-3.1-pro-preview";
+    }
+
     try {
-      const generatedClientReport = await generateClientReport(formData, report, settings.therapistName, settings.clinicName, settings.prompts.clientReport, settings.charCountRange, settings.modelPreference);
+      const generatedClientReport = await generateClientReport(formData, report, settings.therapistName, settings.clinicName, settings.prompts.clientReport, settings.charCountRange, apiSettings);
       if (cancelRef.current) return;
       resetClientReport(generatedClientReport);
       setActiveTab('client');
@@ -503,8 +461,14 @@ export default function App() {
     setIsGeneratingSuggestions(true);
     setError('');
     setIsEditingSuggestions(false);
+
+    const apiSettings = { ...settings.apiSettings };
+    if (apiSettings.provider === 'Gemini') {
+      apiSettings.selectedModel = settings.modelPreference === 'Flash' ? "gemini-3-flash-preview" : "gemini-3.1-pro-preview";
+    }
+
     try {
-      const generatedSuggestions = await generateSuggestionsAndTips(formData, report, settings.therapistName, settings.clinicName, settings.prompts.suggestions, settings.charCountRange, settings.modelPreference);
+      const generatedSuggestions = await generateSuggestionsAndTips(formData, report, settings.therapistName, settings.clinicName, settings.prompts.suggestions, settings.charCountRange, apiSettings);
       if (cancelRef.current) return;
       resetSuggestions(generatedSuggestions);
       setActiveTab('suggestions');
@@ -518,143 +482,159 @@ export default function App() {
   };
 
   const handleGenerateAll = async () => {
-    if (creditState.current_credit <= 0) {
-      checkAndDeductCredit(); // This will trigger the redeem modal
-      return;
-    }
-
-    askConfirmation(
-      "Konfirmasi Generate Semua",
-      "Anda akan menggunakan 1 kredit untuk membuat semua jenis laporan sekaligus (Laporan Klinis, Rencana Sesi, Laporan Klien, dan Saran). Lanjutkan?",
-      async () => {
-        if (!checkAndDeductCredit()) return;
-
-        cancelRef.current = false;
-        setIsGeneratingAll(true);
-        setError('');
-        setIsEditing(false);
-        setIsEditingPlan(false);
-        setIsEditingClientReport(false);
-        setIsEditingSuggestions(false);
-        setActiveTab('report');
-        
-        try {
-          setIsGenerating(true);
-          resetReport('');
-          let fullText = '';
-          const generatedReport = await generateClinicalReport(
-            formData, 
-            settings.therapistName, 
-            settings.clinicName, 
-            settings.prompts.clinicalReport, 
-            settings.charCountRange,
-            (chunk) => {
-              if (cancelRef.current) return;
-              fullText += chunk;
-              resetReport(fullText);
-            },
-            settings.modelPreference
-          );
-          if (cancelRef.current) return;
-          resetReport(generatedReport);
-          setIsGenerating(false);
-
-          // Run the rest in parallel as they all depend on generatedReport
-          setIsGeneratingPlan(true);
-          setIsGeneratingClientReport(true);
-          setIsGeneratingSuggestions(true);
-
-          const [generatedPlan, generatedClientReport, generatedSuggestions] = await Promise.all([
-            generateNextSessionPlan(formData, generatedReport, planSessionsCount, settings.therapistName, settings.clinicName, settings.prompts.nextSessionPlan, settings.charCountRange, settings.modelPreference),
-            generateClientReport(formData, generatedReport, settings.therapistName, settings.clinicName, settings.prompts.clientReport, settings.charCountRange, settings.modelPreference),
-            generateSuggestionsAndTips(formData, generatedReport, settings.therapistName, settings.clinicName, settings.prompts.suggestions, settings.charCountRange, settings.modelPreference)
-          ]);
-
-          if (cancelRef.current) return;
-
-          resetPlan(generatedPlan);
-          setIsGeneratingPlan(false);
-
-          resetClientReport(generatedClientReport);
-          setIsGeneratingClientReport(false);
-
-          resetSuggestions(generatedSuggestions);
-          setIsGeneratingSuggestions(false);
-
-          // alert(`Semua laporan berhasil di-generate! Sisa saldo kredit: ${creditState.current_credit - 1}`);
-        } catch (err: any) {
-          if (!cancelRef.current) {
-            setError(err.message || 'Terjadi kesalahan saat membuat laporan.');
-          }
-          setIsGenerating(false);
-          setIsGeneratingPlan(false);
-          setIsGeneratingClientReport(false);
-          setIsGeneratingSuggestions(false);
-        } finally {
-          setIsGeneratingAll(false);
-        }
+    const startGeneration = async () => {
+      cancelRef.current = false;
+      setIsGeneratingAll(true);
+      setError('');
+      setIsEditing(false);
+      setIsEditingPlan(false);
+      setIsEditingClientReport(false);
+      setIsEditingSuggestions(false);
+      setActiveTab('report');
+      
+      const apiSettings = { ...settings.apiSettings };
+      if (apiSettings.provider === 'Gemini') {
+        apiSettings.selectedModel = settings.modelPreference === 'Flash' ? "gemini-3-flash-preview" : "gemini-3.1-pro-preview";
       }
-    );
+
+      try {
+        setIsGenerating(true);
+        resetReport('');
+        let fullText = '';
+        const generatedReport = await generateClinicalReport(
+          formData, 
+          settings.therapistName, 
+          settings.clinicName, 
+          settings.prompts.clinicalReport, 
+          settings.charCountRange,
+          (chunk) => {
+            if (cancelRef.current) return;
+            fullText += chunk;
+            resetReport(fullText);
+          },
+          apiSettings
+        );
+        if (cancelRef.current) return;
+        resetReport(generatedReport);
+        setIsGenerating(false);
+
+        // Run the rest in parallel as they all depend on generatedReport
+        setIsGeneratingPlan(true);
+        setIsGeneratingClientReport(true);
+        setIsGeneratingSuggestions(true);
+
+        const [generatedPlan, generatedClientReport, generatedSuggestions] = await Promise.all([
+          generateNextSessionPlan(formData, generatedReport, planSessionsCount, settings.therapistName, settings.clinicName, settings.prompts.nextSessionPlan, settings.charCountRange, apiSettings),
+          generateClientReport(formData, generatedReport, settings.therapistName, settings.clinicName, settings.prompts.clientReport, settings.charCountRange, apiSettings),
+          generateSuggestionsAndTips(formData, generatedReport, settings.therapistName, settings.clinicName, settings.prompts.suggestions, settings.charCountRange, apiSettings)
+        ]);
+
+        if (cancelRef.current) return;
+
+        resetPlan(generatedPlan);
+        setIsGeneratingPlan(false);
+
+        resetClientReport(generatedClientReport);
+        setIsGeneratingClientReport(false);
+
+        resetSuggestions(generatedSuggestions);
+        setIsGeneratingSuggestions(false);
+
+      } catch (err: any) {
+        if (!cancelRef.current) {
+          setError(err.message || 'Terjadi kesalahan saat membuat laporan.');
+        }
+        setIsGenerating(false);
+        setIsGeneratingPlan(false);
+        setIsGeneratingClientReport(false);
+        setIsGeneratingSuggestions(false);
+      } finally {
+        setIsGeneratingAll(false);
+      }
+    };
+
+    if (settings.charCountRange === 'unlimited') {
+      askConfirmation(
+        "Konfirmasi Laporan Sangat Detail",
+        "Opsi 'Tanpa Batasan' akan menghasilkan laporan yang sangat panjang. Ini akan mempercepat konsumsi kuota API Gemini Anda. Lanjutkan?",
+        startGeneration
+      );
+    } else {
+      startGeneration();
+    }
   };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!checkAndDeductCredit()) {
-      if (fileInputRef.current) fileInputRef.current.value = '';
-      return;
-    }
-
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setIsAnalyzingImage(true);
-    try {
-      const extractedData = await analyzeTherapistNotes(file);
+    const startAnalysis = async () => {
+      setIsAnalyzingImage(true);
       
-      setFormData(prev => {
-        const updatedData = { ...prev };
-        const textareaFields = [
-          'presentingProblem', 
-          'initialObservation', 
-          'techniquesUsed', 
-          'sessionDynamics', 
-          'postObservation', 
-          'homework', 
-          'nextPlan'
-        ];
+      const apiSettings = { ...settings.apiSettings };
+      if (apiSettings.provider === 'Gemini') {
+        apiSettings.selectedModel = "gemini-3-flash-preview"; // Use flash for analysis
+      }
 
-        Object.entries(extractedData).forEach(([key, value]) => {
-          const k = key as keyof SessionData;
-          const newValue = String(value || "").trim();
-          
-          if (!newValue) return;
-
-          const currentValue = String(updatedData[k] || "").trim();
-
-          if (textareaFields.includes(k)) {
-            // Untuk field teks panjang, tambahkan jika belum ada informasi yang sama
-            if (!currentValue) {
-              updatedData[k] = newValue;
-            } else if (!currentValue.toLowerCase().includes(newValue.toLowerCase())) {
-              // Tambahkan dengan pemisah jika informasi baru unik
-              updatedData[k] = `${currentValue}\n\n[Hasil Scan]: ${newValue}`;
-            }
-          } else {
-            // Untuk field input pendek (nama, umur, gender, SUD), isi hanya jika masih kosong
-            if (!currentValue) {
-              updatedData[k] = newValue;
-            }
-          }
-        });
+      try {
+        const extractedData = await analyzeTherapistNotes(file, apiSettings);
         
-        return updatedData;
-      });
+        setFormData(prev => {
+          const updatedData = { ...prev };
+          const textareaFields = [
+            'presentingProblem', 
+            'initialObservation', 
+            'techniquesUsed', 
+            'sessionDynamics', 
+            'postObservation', 
+            'homework', 
+            'nextPlan'
+          ];
 
-      alert(`Catatan berhasil dianalisis dan dimasukkan ke dalam form! Sisa saldo kredit: ${creditState.current_credit - 1}`);
-    } catch (err: any) {
-      alert(err.message || "Gagal menganalisis gambar.");
-    } finally {
-      setIsAnalyzingImage(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
+          Object.entries(extractedData).forEach(([key, value]) => {
+            const k = key as keyof SessionData;
+            const newValue = String(value || "").trim();
+            
+            if (!newValue) return;
+
+            const currentValue = String(updatedData[k] || "").trim();
+
+            if (textareaFields.includes(k)) {
+              // Untuk field teks panjang, tambahkan jika belum ada informasi yang sama
+              if (!currentValue) {
+                updatedData[k] = newValue;
+              } else if (!currentValue.toLowerCase().includes(newValue.toLowerCase())) {
+                // Tambahkan dengan pemisah jika informasi baru unik
+                updatedData[k] = `${currentValue}\n\n[Hasil Scan]: ${newValue}`;
+              }
+            } else {
+              // Untuk field input pendek (nama, umur, gender, SUD), isi hanya jika masih kosong
+              if (!currentValue) {
+                updatedData[k] = newValue;
+              }
+            }
+          });
+          
+          return updatedData;
+        });
+
+        alert(`Catatan berhasil dianalisis dan dimasukkan ke dalam form!`);
+      } catch (err: any) {
+        alert(err.message || "Gagal menganalisis gambar.");
+      } finally {
+        setIsAnalyzingImage(false);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      }
+    };
+
+    if (settings.charCountRange === 'unlimited') {
+      askConfirmation(
+        "Konfirmasi Analisis Gambar",
+        "Opsi 'Tanpa Batasan' aktif. Proses ini mungkin menggunakan lebih banyak kuota API. Lanjutkan?",
+        startAnalysis
+      );
+    } else {
+      startAnalysis();
     }
   };
 
@@ -794,12 +774,11 @@ export default function App() {
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setShowRedeemModal(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-100 text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-900/40 dark:text-indigo-300 dark:hover:bg-indigo-800/60 rounded-full text-sm font-medium transition-colors"
-              title="Redeem Product Key"
+              onClick={() => setShowHistoryModal(true)}
+              className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 dark:text-slate-400 dark:hover:text-indigo-400 dark:hover:bg-slate-800 rounded-lg transition-colors"
+              title="Riwayat Laporan"
             >
-              <CreditCard className="w-4 h-4" />
-              <span>{creditState.current_credit}</span>
+              <History className="w-5 h-5" />
             </button>
             <button
               onClick={() => setShowSettingsModal(true)}
@@ -807,13 +786,6 @@ export default function App() {
               title="Pengaturan"
             >
               <Settings className="w-5 h-5" />
-            </button>
-            <button
-              onClick={() => setShowHistoryModal(true)}
-              className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 dark:text-slate-400 dark:hover:text-indigo-400 dark:hover:bg-slate-800 rounded-lg transition-colors"
-              title="Riwayat Laporan"
-            >
-              <History className="w-5 h-5" />
             </button>
             <button
               onClick={toggleDarkMode}
@@ -1087,8 +1059,33 @@ export default function App() {
       <div className="w-full md:w-1/2 lg:w-[55%] h-screen overflow-y-auto bg-slate-50 dark:bg-slate-900 p-6 md:p-8 print:w-full print:h-auto print:bg-white print:p-0">
         <div className="max-w-3xl mx-auto">
           {error && (
-            <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/50 rounded-xl text-red-700 dark:text-red-400 text-sm print:hidden">
-              {error}
+            <div className="mb-6 p-6 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/50 rounded-2xl text-red-700 dark:text-red-400 text-sm print:hidden shadow-sm">
+              <div className="flex items-start gap-3">
+                <XCircle className="w-5 h-5 mt-0.5 flex-shrink-0" />
+                <div className="flex-1">
+                  <p className="font-semibold mb-1">Terjadi Kesalahan</p>
+                  <p className="opacity-90 leading-relaxed">{error}</p>
+                  {(error.includes('RESOURCE_EXHAUSTED') || error.includes('429')) && (
+                    <div className="mt-4 p-4 bg-white/50 dark:bg-black/20 rounded-xl border border-red-200/50 dark:border-red-800/30">
+                      <p className="font-medium mb-2 text-red-800 dark:text-red-300">Kuota AI Habis</p>
+                      <p className="mb-4 text-xs opacity-80">Anda telah mencapai batas penggunaan gratis. Silakan gunakan API Key Anda sendiri (dari Google AI Studio) untuk melanjutkan tanpa batasan.</p>
+                      <button
+                        onClick={async () => {
+                          try {
+                            await window.aistudio.openSelectKey();
+                            setError(''); // Clear error after selecting key
+                          } catch (e) {
+                            console.error("Failed to open key selector", e);
+                          }
+                        }}
+                        className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors font-medium text-xs flex items-center gap-2 shadow-sm"
+                      >
+                        <Key className="w-3.5 h-3.5" /> Pilih / Ganti API Key
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           )}
 
@@ -1503,66 +1500,6 @@ export default function App() {
         </div>
       </div>
 
-      {/* Redeem Modal */}
-      {showRedeemModal && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-md overflow-hidden flex flex-col border border-slate-200 dark:border-slate-800">
-            <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-950">
-              <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2">
-                <Key className="w-5 h-5 text-indigo-600 dark:text-indigo-400" /> Redeem Product Key
-              </h2>
-              <button 
-                onClick={() => setShowRedeemModal(false)}
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
-              >
-                Tutup
-              </button>
-            </div>
-            
-            <div className="p-6 space-y-4">
-              <div className="bg-indigo-50 dark:bg-indigo-900/20 p-4 rounded-xl border border-indigo-100 dark:border-indigo-800/30">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm text-indigo-800 dark:text-indigo-300 font-medium">Saldo Kredit Saat Ini:</span>
-                  <span className="text-lg font-bold text-indigo-600 dark:text-indigo-400">{creditState.current_credit}</span>
-                </div>
-                <p className="text-xs text-indigo-700 dark:text-indigo-400">
-                  1 Kredit = 1x Generate Laporan via Foto / Form.
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                  Masukkan Product Key
-                </label>
-                <input
-                  type="text"
-                  value={redeemKey}
-                  onChange={(e) => setRedeemKey(e.target.value)}
-                  placeholder="Contoh: REDEEM-A-XXXXX"
-                  className="w-full px-4 py-2 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-shadow text-slate-900 dark:text-slate-100"
-                />
-              </div>
-            </div>
-
-            <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 flex justify-end gap-2">
-              <button 
-                onClick={() => setShowRedeemModal(false)}
-                className="px-4 py-2 text-slate-600 hover:bg-slate-200 dark:text-slate-300 dark:hover:bg-slate-800 rounded-lg transition-colors font-medium text-sm"
-              >
-                Batal
-              </button>
-              <button 
-                onClick={handleRedeem}
-                disabled={!redeemKey.trim()}
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors font-medium text-sm flex items-center gap-2"
-              >
-                <Check className="w-4 h-4" /> Redeem
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Confirmation Modal */}
       {showConfirmModal && confirmConfig && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
@@ -1637,9 +1574,9 @@ export default function App() {
                   value={settings.charCountRange}
                   onChange={(e) => setSettings(prev => ({ ...prev, charCountRange: e.target.value as any }))}
                   options={[
-                    { value: '250-500', label: '250 - 500 Karakter (Hemat Token)' },
-                    { value: '500-800', label: '500 - 800 Karakter (Standar)' },
-                    { value: '800-1000', label: '800 - 1000 Karakter (Lengkap)' },
+                    { value: '500-800', label: '500 - 800 Karakter (Hemat)' },
+                    { value: '800-1500', label: '800 - 1500 Karakter (Standar)' },
+                    { value: '1500-2000', label: '1500 - 2000 Karakter (Lengkap)' },
                     { value: 'unlimited', label: 'Tanpa Batasan (Sangat Detail)' }
                   ]}
                 />
@@ -1653,11 +1590,122 @@ export default function App() {
                     { value: 'Pro', label: 'Gemini Pro (Lebih Lambat, Kualitas Klinis Tinggi)' }
                   ]}
                 />
+
+                <div className="pt-4 border-t border-slate-100 dark:border-slate-800">
+                  <button
+                    onClick={() => setShowLogsModal(true)}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg transition-all font-medium text-xs border border-slate-200 dark:border-slate-700"
+                  >
+                    <FileText className="w-4 h-4" /> Lihat Application Logs
+                  </button>
+                </div>
+
+                <div className="pt-4 space-y-4">
+                  <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                    <Key size={16} className="text-indigo-600 dark:text-indigo-400" />
+                    Setting API Key & Endpoint
+                  </h3>
+                  <div className="space-y-4 bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setSettings(prev => ({ ...prev, apiSettings: { ...prev.apiSettings, provider: 'Gemini' } }))}
+                        className={`flex-1 py-2 px-3 rounded-lg border text-xs font-medium transition-all ${
+                          settings.apiSettings.provider === 'Gemini'
+                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                            : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-300 dark:border-slate-700 hover:border-indigo-600'
+                        }`}
+                      >
+                        Google Gen AI
+                      </button>
+                      <button
+                        onClick={() => setSettings(prev => ({ ...prev, apiSettings: { ...prev.apiSettings, provider: 'LiteLLM' } }))}
+                        className={`flex-1 py-2 px-3 rounded-lg border text-xs font-medium transition-all ${
+                          settings.apiSettings.provider === 'LiteLLM'
+                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                            : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-300 dark:border-slate-700 hover:border-indigo-600'
+                        }`}
+                      >
+                        LiteLLM Proxy
+                      </button>
+                    </div>
+
+                    {settings.apiSettings.provider === 'Gemini' ? (
+                      <div className="space-y-3">
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400 italic">
+                          Menggunakan endpoint resmi Google Gemini. Jika kuota habis, Anda bisa menggunakan API Key sendiri.
+                        </p>
+                        <button
+                          onClick={async () => {
+                            try {
+                              await window.aistudio.openSelectKey();
+                            } catch (e) {
+                              console.error("Failed to open key selector", e);
+                            }
+                          }}
+                          className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-indigo-50 dark:bg-indigo-900/20 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 rounded-lg transition-all font-medium text-xs border border-indigo-100 dark:border-indigo-800/30"
+                        >
+                          <Key className="w-4 h-4" /> Pilih / Ganti API Key
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        <FormInput
+                          label="LiteLLM Base URL"
+                          value={settings.apiSettings.liteLLMBaseUrl}
+                          onChange={(e: any) => {
+                            const val = e.target.value;
+                            setSettings(prev => ({ ...prev, apiSettings: { ...prev.apiSettings, liteLLMBaseUrl: val } }));
+                          }}
+                          placeholder="https://litellm.koboi2026.biz.id/v1"
+                        />
+                        <FormInput
+                          label="LiteLLM API Key"
+                          type="password"
+                          value={settings.apiSettings.liteLLMKey}
+                          onChange={(e: any) => {
+                            const val = e.target.value;
+                            setSettings(prev => ({ ...prev, apiSettings: { ...prev.apiSettings, liteLLMKey: val } }));
+                          }}
+                          placeholder="Masukkan LiteLLM API Key Anda"
+                        />
+                        <div>
+                          <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Pilih Model</label>
+                          <div className="relative">
+                            <select
+                              value={settings.apiSettings.selectedModel}
+                              onChange={(e) => setSettings(prev => ({ ...prev, apiSettings: { ...prev.apiSettings, selectedModel: e.target.value } }))}
+                              className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all appearance-none text-xs text-slate-900 dark:text-slate-100"
+                              disabled={isFetchingModels || liteLLMModels.length === 0}
+                            >
+                              {isFetchingModels ? (
+                                <option>Fetching models...</option>
+                              ) : liteLLMModels.length > 0 ? (
+                                liteLLMModels.map(model => (
+                                  <option key={model} value={model}>{model}</option>
+                                ))
+                              ) : (
+                                <option>Masukkan API Key untuk melihat model</option>
+                              )}
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
                   Informasi ini akan disinkronkan dan digunakan secara otomatis pada setiap laporan yang di-generate.
                 </p>
                 
                 <div className="mt-8 pt-6 border-t border-slate-100 dark:border-slate-800 text-center">
+                  <button
+                    onClick={() => setShowLogsModal(true)}
+                    className="flex items-center justify-center gap-2 w-full px-4 py-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 dark:text-slate-400 dark:hover:text-indigo-400 dark:hover:bg-slate-800 rounded-lg transition-colors text-xs font-medium border border-slate-200 dark:border-slate-800 mb-4"
+                  >
+                    <FileText className="w-4 h-4" />
+                    Buka Application Logs
+                  </button>
                   <p className="text-[10px] font-semibold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
                     Developed by Soultiva AI Dev
                   </p>
@@ -1732,6 +1780,80 @@ export default function App() {
                   ))}
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Logs Modal */}
+      {showLogsModal && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-4xl max-h-[80vh] flex flex-col overflow-hidden border border-slate-200 dark:border-slate-800">
+            <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-950">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-indigo-100 dark:bg-indigo-900/40 rounded-lg text-indigo-600 dark:text-indigo-400">
+                  <FileText size={20} />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-slate-800 dark:text-slate-200">Application Logs</h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Monitor aktivitas dan error aplikasi</p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button 
+                  onClick={() => {
+                    logger.clear();
+                    setSettings(prev => ({ ...prev })); // Force re-render
+                  }}
+                  className="px-3 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                >
+                  Clear Logs
+                </button>
+                <button 
+                  onClick={() => setShowLogsModal(false)}
+                  className="p-2 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-full transition-colors"
+                >
+                  <XCircle size={20} className="text-slate-400" />
+                </button>
+              </div>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-4 bg-slate-950 font-mono text-xs">
+              {logger.getLogs().length === 0 ? (
+                <div className="text-slate-600 italic text-center py-10">No logs available.</div>
+              ) : (
+                <div className="space-y-1">
+                  {logger.getLogs().map((log, index) => (
+                    <div key={index} className="border-b border-slate-900 pb-1">
+                      <div className="flex gap-2">
+                        <span className="text-slate-600">[{new Date(log.timestamp).toLocaleTimeString()}]</span>
+                        <span className={`font-bold ${
+                          log.level === 'error' ? 'text-red-400' :
+                          log.level === 'warn' ? 'text-yellow-400' :
+                          log.level === 'info' ? 'text-blue-400' :
+                          'text-slate-500'
+                        }`}>
+                          {log.level.toUpperCase()}
+                        </span>
+                        <span className="text-slate-300">{log.message}</span>
+                      </div>
+                      {log.data && (
+                        <pre className="mt-1 ml-20 text-slate-500 text-[10px] overflow-x-auto whitespace-pre-wrap">
+                          {JSON.stringify(log.data, null, 2)}
+                        </pre>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            
+            <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-right">
+              <button
+                onClick={() => setShowLogsModal(false)}
+                className="px-6 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-all font-medium text-sm"
+              >
+                Tutup
+              </button>
             </div>
           </div>
         </div>

@@ -1,6 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
-
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+import { logger } from "./logger";
 
 export interface SessionData {
   clientName: string;
@@ -23,6 +22,175 @@ export interface SessionData {
   postObservation: string;
   homework: string;
   nextPlan: string;
+}
+
+export interface ApiSettings {
+  provider: 'Gemini' | 'LiteLLM';
+  liteLLMKey: string;
+  liteLLMBaseUrl: string;
+  selectedModel: string;
+}
+
+export const LITELLM_DEFAULT_BASE_URL = "https://litellm.koboi2026.biz.id/v1";
+
+export async function fetchLiteLLMModels(apiKey: string, baseUrl: string = LITELLM_DEFAULT_BASE_URL): Promise<string[]> {
+  logger.info(`Fetching models from LiteLLM: ${baseUrl}`);
+  try {
+    const response = await fetch(`${baseUrl}/models`, {
+      headers: {
+        'Authorization': `Bearer ${apiKey}`
+      }
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      logger.error(`Failed to fetch LiteLLM models: ${response.status}`, errorData);
+      throw new Error(`Failed to fetch models: ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    logger.info(`Successfully fetched ${data.data?.length || 0} models from LiteLLM`);
+    return data.data?.map((m: any) => m.id) || [];
+  } catch (error) {
+    logger.error("Error in fetchLiteLLMModels:", error);
+    throw error;
+  }
+}
+
+async function callAI(
+  apiSettings: ApiSettings,
+  prompt: string,
+  config: { temperature?: number; responseMimeType?: string; responseSchema?: any; stream?: boolean },
+  onChunk?: (chunk: string) => void
+): Promise<string> {
+  const { provider, liteLLMKey, liteLLMBaseUrl, selectedModel } = apiSettings;
+
+  if (provider === 'LiteLLM') {
+    logger.info(`Calling LiteLLM API: ${selectedModel}`, { prompt: prompt.substring(0, 100) + "..." });
+    const baseUrl = liteLLMBaseUrl || LITELLM_DEFAULT_BASE_URL;
+    
+    try {
+      const response = await fetch(`${baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${liteLLMKey}`
+        },
+        body: JSON.stringify({
+          model: selectedModel,
+          messages: [{ role: 'user', content: prompt }],
+          temperature: config.temperature ?? 0.5,
+          stream: !!onChunk
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        logger.error(`LiteLLM API Error: ${response.status}`, errorData);
+        const statusText = response.statusText || (response.status === 429 ? "Too Many Requests" : "Error");
+        const errorMessage = `LiteLLM Error ${response.status}: ${statusText}`;
+        
+        if (response.status === 429) {
+          throw new Error(`QUOTA_EXCEEDED: ${errorMessage}`);
+        }
+        throw new Error(errorMessage);
+      }
+
+      if (onChunk && response.body) {
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let fullText = "";
+        
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          
+          const chunk = decoder.decode(value);
+          const lines = chunk.split('\n').filter(line => line.trim() !== '');
+          
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const dataStr = line.replace('data: ', '').trim();
+              if (dataStr === '[DONE]') continue;
+              
+              try {
+                const data = JSON.parse(dataStr);
+                const content = data.choices?.[0]?.delta?.content || "";
+                if (content) {
+                  fullText += content;
+                  onChunk(content);
+                }
+              } catch (e) {
+                logger.warn("Failed to parse LiteLLM stream chunk", { line });
+              }
+            }
+          }
+        }
+        logger.info("LiteLLM stream call completed");
+        return fullText;
+      } else {
+        const data = await response.json();
+        const content = data.choices?.[0]?.message?.content || "";
+        logger.info("LiteLLM call completed");
+        return content;
+      }
+    } catch (error) {
+      logger.error("LiteLLM call failed:", error);
+      throw error;
+    }
+  } else {
+    // Gemini
+    logger.info(`Calling Gemini API: ${selectedModel}`, { prompt: prompt.substring(0, 100) + "..." });
+    const apiKey = (process.env as any).API_KEY || process.env.GEMINI_API_KEY;
+    const ai = new GoogleGenAI({ apiKey });
+    
+    try {
+      if (onChunk) {
+        const response = await ai.models.generateContentStream({
+          model: selectedModel,
+          contents: prompt,
+          config: {
+            temperature: config.temperature ?? 0.5,
+            responseMimeType: config.responseMimeType as any,
+            responseSchema: config.responseSchema,
+          }
+        });
+
+        let fullText = "";
+        for await (const chunk of response) {
+          const text = chunk.text;
+          if (text) {
+            fullText += text;
+            onChunk(text);
+          }
+        }
+        logger.info("Gemini stream call completed");
+        return fullText;
+      } else {
+        const response = await ai.models.generateContent({
+          model: selectedModel,
+          contents: prompt,
+          config: {
+            temperature: config.temperature ?? 0.5,
+            responseMimeType: config.responseMimeType as any,
+            responseSchema: config.responseSchema,
+          }
+        });
+        
+        const content = response.text || "";
+        logger.info("Gemini call completed");
+        return content;
+      }
+    } catch (error: any) {
+      logger.error("Gemini call failed:", error);
+      // Preserve the error message if it contains quota info
+      const errorMessage = error.message || String(error);
+      if (errorMessage.includes('429') || errorMessage.includes('RESOURCE_EXHAUSTED')) {
+        throw new Error(`QUOTA_EXCEEDED: ${errorMessage}`);
+      }
+      throw error;
+    }
+  }
 }
 
 export const DEFAULT_PROMPTS = {
@@ -206,7 +374,7 @@ function buildPrompt(template: string, data: SessionData, therapistName: string,
   return prompt;
 }
 
-export async function analyzeTherapistNotes(file: File): Promise<Partial<SessionData>> {
+export async function analyzeTherapistNotes(file: File, apiSettings?: ApiSettings): Promise<Partial<SessionData>> {
   const base64EncodedDataPromise = new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.onloadend = () => {
@@ -218,6 +386,14 @@ export async function analyzeTherapistNotes(file: File): Promise<Partial<Session
   });
 
   const base64Data = await base64EncodedDataPromise;
+  
+  // If no apiSettings provided, use default Gemini
+  const settings: ApiSettings = apiSettings || {
+    provider: 'Gemini',
+    liteLLMKey: '',
+    liteLLMBaseUrl: LITELLM_DEFAULT_BASE_URL,
+    selectedModel: 'gemini-3-flash-preview'
+  };
 
   const prompt = `Anda adalah asisten AI untuk hipnoterapis.
 Tugas Anda adalah membaca catatan tulisan tangan atau ketikan dari terapis ini dan mengekstrak informasinya ke dalam format JSON.
@@ -239,78 +415,126 @@ Cocokkan informasi dengan field berikut jika ada:
 Jika ada field yang tidak ditemukan di catatan, kosongkan saja string-nya ("").`;
 
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: {
-        parts: [
-          {
-            inlineData: {
-              data: base64Data,
-              mimeType: file.type,
+    // Note: LiteLLM might not support image analysis in the same way as Gemini SDK
+    // For now, we'll use Gemini for image analysis if provider is Gemini
+    // If LiteLLM is selected, we might need a different approach or just use Gemini for this specific task
+    // But let's try to follow the provider choice if possible.
+    // Actually, LiteLLM usually supports vision if the model does.
+    
+    if (settings.provider === 'LiteLLM') {
+      logger.info(`Analyzing notes with LiteLLM: ${settings.selectedModel}`);
+      const baseUrl = settings.liteLLMBaseUrl || LITELLM_DEFAULT_BASE_URL;
+      const response = await fetch(`${baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${settings.liteLLMKey}`
+        },
+        body: JSON.stringify({
+          model: settings.selectedModel,
+          messages: [
+            {
+              role: 'user',
+              content: [
+                { type: 'text', text: prompt },
+                { type: 'image_url', image_url: { url: `data:${file.type};base64,${base64Data}` } }
+              ]
+            }
+          ],
+          response_format: { type: 'json_object' }
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`LiteLLM Error: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      const text = data.choices?.[0]?.message?.content || "";
+      if (!text) throw new Error("Gagal mengekstrak data dari gambar.");
+      return JSON.parse(text);
+    } else {
+      logger.info(`Analyzing notes with Gemini: ${settings.selectedModel}`);
+      const apiKey = (process.env as any).API_KEY || process.env.GEMINI_API_KEY;
+      const ai = new GoogleGenAI({ apiKey });
+      const response = await ai.models.generateContent({
+        model: settings.selectedModel,
+        contents: {
+          parts: [
+            {
+              inlineData: {
+                data: base64Data,
+                mimeType: file.type,
+              },
+            },
+            { text: prompt },
+          ],
+        },
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              clientName: { type: Type.STRING },
+              clientAge: { type: Type.STRING },
+              clientGender: { type: Type.STRING },
+              presentingProblem: { type: Type.STRING },
+              initialObservation: { type: Type.STRING },
+              initialSUD: { type: Type.STRING },
+              techniquesUsed: { type: Type.STRING },
+              tranceDepth: { type: Type.STRING },
+              sessionDynamics: { type: Type.STRING },
+              finalSUD: { type: Type.STRING },
+              postObservation: { type: Type.STRING },
+              homework: { type: Type.STRING },
+              nextPlan: { type: Type.STRING },
             },
           },
-          { text: prompt },
-        ],
-      },
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            clientName: { type: Type.STRING },
-            clientAge: { type: Type.STRING },
-            clientGender: { type: Type.STRING },
-            presentingProblem: { type: Type.STRING },
-            initialObservation: { type: Type.STRING },
-            initialSUD: { type: Type.STRING },
-            techniquesUsed: { type: Type.STRING },
-            tranceDepth: { type: Type.STRING },
-            sessionDynamics: { type: Type.STRING },
-            finalSUD: { type: Type.STRING },
-            postObservation: { type: Type.STRING },
-            homework: { type: Type.STRING },
-            nextPlan: { type: Type.STRING },
-          },
         },
-      },
-    });
+      });
 
-    const text = response.text;
-    if (!text) throw new Error("Gagal mengekstrak data dari gambar.");
-    return JSON.parse(text);
+      const text = response.text;
+      if (!text) throw new Error("Gagal mengekstrak data dari gambar.");
+      return JSON.parse(text);
+    }
   } catch (error) {
-    console.error("Error analyzing notes:", error);
+    logger.error("Error analyzing notes:", error);
     throw new Error("Terjadi kesalahan saat menganalisis gambar catatan.");
   }
 }
 
-export async function generateNextSessionPlan(data: SessionData, report: string, planSessionsCount: number = 1, therapistName: string, clinicName: string, customPrompt?: string, charCountRange?: string, modelPreference: 'Pro' | 'Flash' = 'Pro'): Promise<string> {
+export async function generateNextSessionPlan(data: SessionData, report: string, planSessionsCount: number = 1, therapistName: string, clinicName: string, customPrompt?: string, charCountRange?: string, apiSettings?: ApiSettings): Promise<string> {
   const template = customPrompt || DEFAULT_PROMPTS.nextSessionPlan;
   const prompt = buildPrompt(template, data, therapistName, clinicName, { report, planSessionsCount, charCountRange });
 
-  const model = modelPreference === 'Flash' ? "gemini-3-flash-preview" : "gemini-3.1-pro-preview";
+  const settings: ApiSettings = apiSettings || {
+    provider: 'Gemini',
+    liteLLMKey: '',
+    liteLLMBaseUrl: LITELLM_DEFAULT_BASE_URL,
+    selectedModel: 'gemini-3-flash-preview'
+  };
 
   try {
-    const response = await ai.models.generateContent({
-      model: model,
-      contents: prompt,
-      config: {
-        temperature: 0.5,
-      }
-    });
-    
-    return response.text || "Gagal menghasilkan rencana sesi.";
-  } catch (error) {
-    console.error("Error generating plan:", error);
-    throw new Error("Terjadi kesalahan saat membuat rencana sesi selanjutnya.");
+    return await callAI(settings, prompt, { temperature: 0.5 });
+  } catch (error: any) {
+    logger.error("Error generating plan:", error);
+    if (error.message?.includes('QUOTA_EXCEEDED')) {
+      throw error;
+    }
+    throw new Error(`Error generating plan: ${error.message || "Terjadi kesalahan saat membuat rencana sesi."}`);
   }
 }
 
-export async function generateClinicalReport(data: SessionData, therapistName: string, clinicName: string, customPrompt?: string, charCountRange?: string, onChunk?: (chunk: string) => void, modelPreference: 'Pro' | 'Flash' = 'Pro'): Promise<string> {
+export async function generateClinicalReport(data: SessionData, therapistName: string, clinicName: string, customPrompt?: string, charCountRange?: string, onChunk?: (chunk: string) => void, apiSettings?: ApiSettings): Promise<string> {
   const template = customPrompt || DEFAULT_PROMPTS.clinicalReport;
   const prompt = buildPrompt(template, data, therapistName, clinicName, { charCountRange });
 
-  const model = modelPreference === 'Flash' ? "gemini-3-flash-preview" : "gemini-3.1-pro-preview";
+  const settings: ApiSettings = apiSettings || {
+    provider: 'Gemini',
+    liteLLMKey: '',
+    liteLLMBaseUrl: LITELLM_DEFAULT_BASE_URL,
+    selectedModel: 'gemini-3-flash-preview'
+  };
 
   const temperature = 
     data.reportStyle === 'Concise' ? 0.3 :
@@ -318,81 +542,56 @@ export async function generateClinicalReport(data: SessionData, therapistName: s
     0.5;
 
   try {
-    if (onChunk) {
-      const response = await ai.models.generateContentStream({
-        model: model,
-        contents: prompt,
-        config: {
-          temperature: temperature,
-        }
-      });
-
-      let fullText = "";
-      for await (const chunk of response) {
-        const text = chunk.text;
-        if (text) {
-          fullText += text;
-          onChunk(text);
-        }
-      }
-      return fullText;
-    } else {
-      const response = await ai.models.generateContent({
-        model: model,
-        contents: prompt,
-        config: {
-          temperature: temperature,
-        }
-      });
-      
-      return response.text || "Gagal menghasilkan laporan.";
+    return await callAI(settings, prompt, { temperature, stream: !!onChunk }, onChunk);
+  } catch (error: any) {
+    logger.error("Error generating report:", error);
+    if (error.message?.includes('QUOTA_EXCEEDED')) {
+      throw error;
     }
-  } catch (error) {
-    console.error("Error generating report:", error);
-    throw new Error("Terjadi kesalahan saat menghubungi AI. Pastikan API Key valid.");
+    throw new Error(`Error generating report: ${error.message || "Terjadi kesalahan saat menghubungi AI."}`);
   }
 }
 
-export async function generateClientReport(data: SessionData, report: string, therapistName: string, clinicName: string, customPrompt?: string, charCountRange?: string, modelPreference: 'Pro' | 'Flash' = 'Pro'): Promise<string> {
+export async function generateClientReport(data: SessionData, report: string, therapistName: string, clinicName: string, customPrompt?: string, charCountRange?: string, apiSettings?: ApiSettings): Promise<string> {
   const template = customPrompt || DEFAULT_PROMPTS.clientReport;
   const prompt = buildPrompt(template, data, therapistName, clinicName, { report, charCountRange });
 
-  const model = modelPreference === 'Flash' ? "gemini-3-flash-preview" : "gemini-3.1-pro-preview";
+  const settings: ApiSettings = apiSettings || {
+    provider: 'Gemini',
+    liteLLMKey: '',
+    liteLLMBaseUrl: LITELLM_DEFAULT_BASE_URL,
+    selectedModel: 'gemini-3-flash-preview'
+  };
 
   try {
-    const response = await ai.models.generateContent({
-      model: model,
-      contents: prompt,
-      config: {
-        temperature: 0.6,
-      }
-    });
-    
-    return response.text || "Gagal menghasilkan ringkasan untuk klien.";
-  } catch (error) {
-    console.error("Error generating client report:", error);
-    throw new Error("Terjadi kesalahan saat membuat ringkasan untuk klien.");
+    return await callAI(settings, prompt, { temperature: 0.6 });
+  } catch (error: any) {
+    logger.error("Error generating client report:", error);
+    if (error.message?.includes('QUOTA_EXCEEDED')) {
+      throw error;
+    }
+    throw new Error(`Error generating client report: ${error.message || "Terjadi kesalahan saat membuat ringkasan untuk klien."}`);
   }
 }
 
-export async function generateSuggestionsAndTips(data: SessionData, report: string, therapistName: string, clinicName: string, customPrompt?: string, charCountRange?: string, modelPreference: 'Pro' | 'Flash' = 'Pro'): Promise<string> {
+export async function generateSuggestionsAndTips(data: SessionData, report: string, therapistName: string, clinicName: string, customPrompt?: string, charCountRange?: string, apiSettings?: ApiSettings): Promise<string> {
   const template = customPrompt || DEFAULT_PROMPTS.suggestions;
   const prompt = buildPrompt(template, data, therapistName, clinicName, { report, charCountRange });
 
-  const model = modelPreference === 'Flash' ? "gemini-3-flash-preview" : "gemini-3.1-pro-preview";
+  const settings: ApiSettings = apiSettings || {
+    provider: 'Gemini',
+    liteLLMKey: '',
+    liteLLMBaseUrl: LITELLM_DEFAULT_BASE_URL,
+    selectedModel: 'gemini-3-flash-preview'
+  };
 
   try {
-    const response = await ai.models.generateContent({
-      model: model,
-      contents: prompt,
-      config: {
-        temperature: 0.7,
-      }
-    });
-    
-    return response.text || "Gagal menghasilkan saran dan tips.";
-  } catch (error) {
-    console.error("Error generating suggestions:", error);
-    throw new Error("Terjadi kesalahan saat membuat saran dan tips.");
+    return await callAI(settings, prompt, { temperature: 0.7 });
+  } catch (error: any) {
+    logger.error("Error generating suggestions:", error);
+    if (error.message?.includes('QUOTA_EXCEEDED')) {
+      throw error;
+    }
+    throw new Error(`Error generating suggestions: ${error.message || "Terjadi kesalahan saat membuat saran dan tips."}`);
   }
 }
