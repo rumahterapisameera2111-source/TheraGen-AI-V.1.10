@@ -13,7 +13,7 @@ export function FastChoice({ options, onSelect }: FastChoiceProps) {
           key={index}
           type="button"
           onClick={() => onSelect(option)}
-          className="px-2.5 py-1 text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-full hover:bg-indigo-100 dark:hover:bg-indigo-900/50 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors border border-slate-200 dark:border-slate-700 hover:border-indigo-300 dark:hover:border-indigo-500/50"
+          className="px-2.5 py-1 text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-full hover:bg-primary-100 dark:hover:bg-primary-900/50 hover:text-primary-700 dark:hover:text-primary-300 transition-colors border border-slate-200 dark:border-slate-700 hover:border-primary-300 dark:hover:border-primary-500/50"
         >
           + {option}
         </button>

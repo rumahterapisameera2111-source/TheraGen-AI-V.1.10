@@ -6,7 +6,8 @@ import Markdown from 'react-markdown';
 import { marked } from 'marked';
 import { useUndo } from './hooks/useUndo';
 import { FastChoice } from './components/FastChoice';
-import { Copy, Download, Loader2, Sparkles, User as UserIcon, Activity, BrainCircuit, FileCheck, Save, History, LogOut, LogIn, Edit3, Check, Undo2, Redo2, ImagePlus, CalendarPlus, Upload, MessageSquareHeart, FileText, Lightbulb, Moon, Sun, Trash2, Settings, Key, CreditCard, XCircle } from 'lucide-react';
+import { Tour } from './components/Tour';
+import { Copy, Download, Loader2, Sparkles, User as UserIcon, Activity, BrainCircuit, FileCheck, Save, History, LogOut, LogIn, Edit3, Check, Undo2, Redo2, ImagePlus, CalendarPlus, Upload, MessageSquareHeart, FileText, Lightbulb, Moon, Sun, Trash2, Settings, Key, CreditCard, XCircle, RotateCcw, HelpCircle, AlertTriangle } from 'lucide-react';
 import html2pdf from 'html2pdf.js';
 import { saveAs } from 'file-saver';
 
@@ -36,11 +37,14 @@ interface HistoryItem {
   formData: SessionData;
 }
 
+type ThemeColor = 'indigo' | 'slate' | 'blue' | 'emerald' | 'rose' | 'amber';
+
 interface SettingsData {
   therapistName: string;
   clinicName: string;
   charCountRange: '500-800' | '800-1500' | '1500-2000' | 'unlimited';
   modelPreference: 'Pro' | 'Flash';
+  themeColor: ThemeColor;
   apiSettings: ApiSettings;
   prompts: {
     clinicalReport: string;
@@ -164,10 +168,11 @@ export default function App() {
 
   // Settings State
   const [settings, setSettings] = useState<SettingsData>({
-    therapistName: 'Satria Siddik S.Psi, C.T, C.PHt, C.NLP',
-    clinicName: 'Rumah Terapi Sameera',
+    therapistName: '',
+    clinicName: '',
     charCountRange: '500-800',
     modelPreference: 'Pro',
+    themeColor: 'indigo',
     apiSettings: {
       provider: 'Gemini',
       liteLLMKey: '',
@@ -192,9 +197,51 @@ export default function App() {
     onConfirm: () => void;
   } | null>(null);
 
+  const [showTour, setShowTour] = useState(false);
+
+  // Apply theme color
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', settings.themeColor);
+  }, [settings.themeColor]);
+
   const askConfirmation = (title: string, message: string, onConfirm: () => void) => {
     setConfirmConfig({ title, message, onConfirm });
     setShowConfirmModal(true);
+  };
+
+  const handleReset = () => {
+    askConfirmation(
+      'Reset Form',
+      'Apakah Anda yakin ingin menghapus semua data input dan hasil laporan ini? Tindakan ini tidak dapat dibatalkan.',
+      () => {
+        setFormData({
+          clientName: '',
+          clientAge: '',
+          clientGender: '',
+          sessionDate: new Date().toISOString().split('T')[0],
+          sessionNumber: '1',
+          therapyType: 'Hipnoterapi',
+          reportStyle: 'Detailed',
+          presentingProblem: '',
+          initialObservation: '',
+          initialSUD: '',
+          techniquesUsed: '',
+          tranceDepth: '',
+          sessionDynamics: '',
+          finalSUD: '',
+          postObservation: '',
+          homework: '',
+          nextPlan: '',
+        });
+        resetReport('');
+        resetPlan('');
+        resetClientReport('');
+        resetSuggestions('');
+        setError('');
+        setActiveTab('report');
+        localStorage.removeItem(STORAGE_KEY);
+      }
+    );
   };
 
   // Load from LocalStorage on mount
@@ -206,6 +253,11 @@ export default function App() {
       } catch (e) {
         console.error("Failed to parse autosave data");
       }
+    }
+
+    const hasSeenTour = localStorage.getItem('theragen_tour_seen');
+    if (!hasSeenTour) {
+      setShowTour(true);
     }
 
     const savedHistory = localStorage.getItem(HISTORY_KEY);
@@ -225,6 +277,7 @@ export default function App() {
           ...parsed,
           charCountRange: parsed.charCountRange || '500-800',
           modelPreference: parsed.modelPreference || 'Pro',
+          themeColor: parsed.themeColor || 'indigo',
           apiSettings: parsed.apiSettings || {
             provider: 'Gemini',
             liteLLMKey: '',
@@ -758,38 +811,63 @@ export default function App() {
     saveAs(blob, `${filename}.doc`);
   };
 
+  const handleCompleteTour = () => {
+    setShowTour(false);
+    localStorage.setItem('theragen_tour_seen', 'true');
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 font-sans text-slate-900 dark:text-slate-100 flex flex-col md:flex-row">
+      {showTour && <Tour onComplete={handleCompleteTour} />}
       {/* Left Panel: Form */}
       <div className="w-full md:w-1/2 lg:w-[45%] h-screen overflow-y-auto border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 p-6 md:p-8 print:hidden">
         <div className="mb-8 flex justify-between items-start">
-          <div>
+          <div id="tour-logo">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 text-[9px] font-bold rounded uppercase tracking-widest border border-slate-200 dark:border-slate-700">
+                Hanya digunakan oleh Kalangan Profesional
+              </span>
+            </div>
             <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-              <Sparkles className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
+              <Sparkles className="w-6 h-6 text-primary-600 dark:text-primary-400" />
               TheraGen
             </h1>
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
               Generator Laporan Konseling & Hipnoterapi Klinis
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div id="tour-utilities" className="flex items-center gap-2">
+            <button
+              onClick={() => setShowTour(true)}
+              className="p-2 text-slate-500 hover:text-primary-600 hover:bg-primary-50 dark:text-slate-400 dark:hover:text-primary-400 dark:hover:bg-slate-800 rounded-lg transition-colors"
+              title="Panduan Pengguna"
+            >
+              <HelpCircle className="w-5 h-5" />
+            </button>
+            <button
+              onClick={handleReset}
+              className="p-2 text-slate-500 hover:text-red-600 hover:bg-red-50 dark:text-slate-400 dark:hover:text-red-400 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+              title="Reset Form"
+            >
+              <RotateCcw className="w-5 h-5" />
+            </button>
             <button
               onClick={() => setShowHistoryModal(true)}
-              className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 dark:text-slate-400 dark:hover:text-indigo-400 dark:hover:bg-slate-800 rounded-lg transition-colors"
+              className="p-2 text-slate-500 hover:text-primary-600 hover:bg-primary-50 dark:text-slate-400 dark:hover:text-primary-400 dark:hover:bg-slate-800 rounded-lg transition-colors"
               title="Riwayat Laporan"
             >
               <History className="w-5 h-5" />
             </button>
             <button
               onClick={() => setShowSettingsModal(true)}
-              className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 dark:text-slate-400 dark:hover:text-indigo-400 dark:hover:bg-slate-800 rounded-lg transition-colors"
+              className="p-2 text-slate-500 hover:text-primary-600 hover:bg-primary-50 dark:text-slate-400 dark:hover:text-primary-400 dark:hover:bg-slate-800 rounded-lg transition-colors"
               title="Pengaturan"
             >
               <Settings className="w-5 h-5" />
             </button>
             <button
               onClick={toggleDarkMode}
-              className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 dark:text-slate-400 dark:hover:text-indigo-400 dark:hover:bg-slate-800 rounded-lg transition-colors"
+              className="p-2 text-slate-500 hover:text-primary-600 hover:bg-primary-50 dark:text-slate-400 dark:hover:text-primary-400 dark:hover:bg-slate-800 rounded-lg transition-colors"
               title={isDarkMode ? "Mode Terang" : "Mode Gelap"}
             >
               {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
@@ -797,12 +875,15 @@ export default function App() {
           </div>
         </div>
 
-        <div className="mb-6 p-4 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-800/30 rounded-xl flex items-center justify-between print:hidden">
+        <div id="tour-upload" className="relative mb-6 p-4 bg-primary-50 dark:bg-primary-900/20 border border-primary-100 dark:border-primary-800/30 rounded-xl flex items-center justify-between print:hidden overflow-hidden">
+          <div className="absolute top-0 right-0">
+            <div className="bg-amber-500 text-white text-[9px] font-bold px-3 py-1 rounded-bl-lg shadow-sm uppercase tracking-wider">PRO</div>
+          </div>
           <div>
-            <h3 className="text-sm font-semibold text-indigo-900 dark:text-indigo-300 flex items-center gap-1.5">
+            <h3 className="text-sm font-semibold text-primary-900 dark:text-primary-300 flex items-center gap-1.5">
               <ImagePlus className="w-4 h-4" /> Upload Catatan Terapis
             </h3>
-            <p className="text-xs text-indigo-700 dark:text-indigo-400/80 mt-1">AI akan membaca foto catatan Anda dan mengisi form otomatis.</p>
+            <p className="text-xs text-primary-700 dark:text-primary-400/80 mt-1">AI akan membaca foto catatan Anda dan mengisi form otomatis.</p>
           </div>
           <input 
             type="file" 
@@ -814,14 +895,14 @@ export default function App() {
           <button 
             onClick={() => fileInputRef.current?.click()}
             disabled={isAnalyzingImage}
-            className="px-3 py-1.5 bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 text-sm font-medium rounded-lg shadow-sm border border-indigo-200 dark:border-slate-700 hover:bg-indigo-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-50 flex items-center gap-1.5 whitespace-nowrap"
+            className="px-3 py-1.5 bg-white dark:bg-slate-800 text-primary-600 dark:text-primary-400 text-sm font-medium rounded-lg shadow-sm border border-primary-200 dark:border-slate-700 hover:bg-primary-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-50 flex items-center gap-1.5 whitespace-nowrap"
           >
             {isAnalyzingImage ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
             {isAnalyzingImage ? 'Menganalisis...' : 'Upload Foto'}
           </button>
         </div>
 
-        <div className="space-y-8 pb-24">
+        <div id="tour-form" className="space-y-8 pb-24">
             {/* Section 1: Klien & Sesi */}
             <section className="space-y-4">
               <div className="flex items-center gap-2 pb-2 border-b border-slate-100 dark:border-slate-800">
@@ -877,19 +958,19 @@ export default function App() {
                   value={formData.presentingProblem} 
                   onChange={handleChange} 
                 />
-                <div>
-                  <FormTextarea 
-                    label="Observasi Awal (Fisik & Emosi)" 
-                    id="initialObservation" 
-                    placeholder="Contoh: Klien tampak tegang, napas pendek, sering menunduk..."
-                    value={formData.initialObservation} 
-                    onChange={handleChange} 
-                  />
-                  <FastChoice 
-                    options={initialObservationOptions} 
-                    onSelect={(val) => appendToField('initialObservation', val)} 
-                  />
-                </div>
+                  <div id="tour-fastchoice">
+                    <FormTextarea 
+                      label="Observasi Awal (Fisik & Emosi)" 
+                      id="initialObservation" 
+                      placeholder="Contoh: Klien tampak tegang, napas pendek, sering menunduk..."
+                      value={formData.initialObservation} 
+                      onChange={handleChange} 
+                    />
+                    <FastChoice 
+                      options={initialObservationOptions} 
+                      onSelect={(val) => appendToField('initialObservation', val)} 
+                    />
+                  </div>
                 <div className="w-1/2">
                   <FormInput 
                     label="Skala SUD Awal (1-10)" 
@@ -1021,7 +1102,7 @@ export default function App() {
           </div>
 
         {/* Floating Action Button for Generate */}
-        <div className="fixed bottom-0 left-0 w-full md:w-1/2 lg:w-[45%] bg-white dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 p-4 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-10 print:hidden flex gap-3">
+        <div id="tour-generate" className="fixed bottom-0 left-0 w-full md:w-1/2 lg:w-[45%] bg-white dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 p-4 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-10 print:hidden flex gap-3">
             {(isGenerating || isGeneratingAll || isGeneratingPlan || isGeneratingClientReport || isGeneratingSuggestions) ? (
               <button
                 onClick={handleCancel}
@@ -1035,7 +1116,7 @@ export default function App() {
                 <button
                   onClick={handleGenerate}
                   disabled={isGenerating || isGeneratingAll}
-                  className="flex-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:hover:bg-indigo-900/50 dark:text-indigo-300 font-medium py-3 px-4 rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+                  className="flex-1 bg-primary-50 hover:bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:hover:bg-primary-900/50 dark:text-primary-300 font-medium py-3 px-4 rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
                   title="Hanya generate Laporan Sesi"
                 >
                   <FileCheck className="w-5 h-5" />
@@ -1044,7 +1125,7 @@ export default function App() {
                 <button
                   onClick={handleGenerateAll}
                   disabled={isGeneratingAll || isGenerating}
-                  className="flex-[2] bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-3 px-4 rounded-xl shadow-sm transition-all flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+                  className="flex-[2] bg-primary-600 hover:bg-primary-700 text-white font-medium py-3 px-4 rounded-xl shadow-sm transition-all flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
                   title="Generate Laporan, Rencana, Laporan Klien, dan Saran sekaligus"
                 >
                   <Sparkles className="w-5 h-5" />
@@ -1056,7 +1137,7 @@ export default function App() {
       </div>
 
       {/* Right Panel: Preview */}
-      <div className="w-full md:w-1/2 lg:w-[55%] h-screen overflow-y-auto bg-slate-50 dark:bg-slate-900 p-6 md:p-8 print:w-full print:h-auto print:bg-white print:p-0">
+      <div id="tour-preview" className="w-full md:w-1/2 lg:w-[55%] h-screen overflow-y-auto bg-slate-50 dark:bg-slate-900 p-6 md:p-8 print:w-full print:h-auto print:bg-white print:p-0">
         <div className="max-w-3xl mx-auto">
           {error && (
             <div className="mb-6 p-6 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/50 rounded-2xl text-red-700 dark:text-red-400 text-sm print:hidden shadow-sm">
@@ -1100,7 +1181,7 @@ export default function App() {
           )}
 
           {isGenerating && (
-            <div className="h-full min-h-[60vh] flex flex-col items-center justify-center text-indigo-500 dark:text-indigo-400 print:hidden">
+            <div className="h-full min-h-[60vh] flex flex-col items-center justify-center text-primary-500 dark:text-primary-400 print:hidden">
               <Loader2 className="w-12 h-12 animate-spin mb-4" />
               <p className="animate-pulse font-medium mb-6">AI sedang menganalisis dan menyusun laporan...</p>
               <button
@@ -1119,25 +1200,25 @@ export default function App() {
               <div className="flex border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 print:hidden overflow-x-auto">
                 <button
                   onClick={() => setActiveTab('report')}
-                  className={`flex-1 py-3 px-4 text-sm font-medium text-center border-b-2 transition-colors whitespace-nowrap ${activeTab === 'report' ? 'border-indigo-600 dark:border-indigo-500 text-indigo-600 dark:text-indigo-400 bg-white dark:bg-slate-950' : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+                  className={`flex-1 py-3 px-4 text-sm font-medium text-center border-b-2 transition-colors whitespace-nowrap ${activeTab === 'report' ? 'border-primary-600 dark:border-primary-500 text-primary-600 dark:text-primary-400 bg-white dark:bg-slate-950' : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
                 >
                   <FileCheck className="w-4 h-4 inline-block mr-1.5 mb-0.5" /> Laporan Sesi
                 </button>
                 <button
                   onClick={() => setActiveTab('plan')}
-                  className={`flex-1 py-3 px-4 text-sm font-medium text-center border-b-2 transition-colors whitespace-nowrap ${activeTab === 'plan' ? 'border-indigo-600 dark:border-indigo-500 text-indigo-600 dark:text-indigo-400 bg-white dark:bg-slate-950' : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+                  className={`flex-1 py-3 px-4 text-sm font-medium text-center border-b-2 transition-colors whitespace-nowrap ${activeTab === 'plan' ? 'border-primary-600 dark:border-primary-500 text-primary-600 dark:text-primary-400 bg-white dark:bg-slate-950' : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
                 >
                   <CalendarPlus className="w-4 h-4 inline-block mr-1.5 mb-0.5" /> Rencana Sesi
                 </button>
                 <button
                   onClick={() => setActiveTab('client')}
-                  className={`flex-1 py-3 px-4 text-sm font-medium text-center border-b-2 transition-colors whitespace-nowrap ${activeTab === 'client' ? 'border-indigo-600 dark:border-indigo-500 text-indigo-600 dark:text-indigo-400 bg-white dark:bg-slate-950' : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+                  className={`flex-1 py-3 px-4 text-sm font-medium text-center border-b-2 transition-colors whitespace-nowrap ${activeTab === 'client' ? 'border-primary-600 dark:border-primary-500 text-primary-600 dark:text-primary-400 bg-white dark:bg-slate-950' : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
                 >
                   <MessageSquareHeart className="w-4 h-4 inline-block mr-1.5 mb-0.5" /> Laporan Klien
                 </button>
                 <button
                   onClick={() => setActiveTab('suggestions')}
-                  className={`flex-1 py-3 px-4 text-sm font-medium text-center border-b-2 transition-colors whitespace-nowrap ${activeTab === 'suggestions' ? 'border-indigo-600 dark:border-indigo-500 text-indigo-600 dark:text-indigo-400 bg-white dark:bg-slate-950' : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+                  className={`flex-1 py-3 px-4 text-sm font-medium text-center border-b-2 transition-colors whitespace-nowrap ${activeTab === 'suggestions' ? 'border-primary-600 dark:border-primary-500 text-primary-600 dark:text-primary-400 bg-white dark:bg-slate-950' : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
                 >
                   <Lightbulb className="w-4 h-4 inline-block mr-1.5 mb-0.5" /> Saran & Tips
                 </button>
@@ -1150,7 +1231,7 @@ export default function App() {
                     <div className="flex flex-wrap items-center gap-1.5">
                       <button
                         onClick={() => setIsEditing(!isEditing)}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${isEditing ? 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300' : 'text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20'}`}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${isEditing ? 'bg-primary-100 dark:bg-primary-900/50 text-primary-700 dark:text-primary-300' : 'text-slate-600 dark:text-slate-400 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20'}`}
                       >
                         {isEditing ? <><Check className="w-4 h-4" /> Selesai Edit</> : <><Edit3 className="w-4 h-4" /> Edit</>}
                       </button>
@@ -1159,7 +1240,7 @@ export default function App() {
                           <button
                             onClick={undoReport}
                             disabled={!canUndoReport}
-                            className="flex items-center gap-1.5 px-2 py-1.5 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="flex items-center gap-1.5 px-2 py-1.5 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             title="Undo"
                           >
                             <Undo2 className="w-4 h-4" />
@@ -1167,7 +1248,7 @@ export default function App() {
                           <button
                             onClick={redoReport}
                             disabled={!canRedoReport}
-                            className="flex items-center gap-1.5 px-2 py-1.5 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="flex items-center gap-1.5 px-2 py-1.5 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             title="Redo"
                           >
                             <Redo2 className="w-4 h-4" />
@@ -1176,26 +1257,26 @@ export default function App() {
                       )}
                       <button
                         onClick={saveToHistory}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 rounded-lg transition-colors"
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 dark:bg-primary-500 dark:hover:bg-primary-600 rounded-lg transition-colors"
                       >
                         <Save className="w-4 h-4" /> Simpan
                       </button>
                       <button
                         onClick={() => handleCopy(report)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg transition-colors"
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg transition-colors"
                       >
                         <Copy className="w-4 h-4" />
                         {copied ? 'Tersalin!' : 'Salin'}
                       </button>
                       <button
                         onClick={() => handleDownloadPDF(report, `Laporan_Sesi_${formData.clientName.replace(/\s+/g, '_') || 'Klien'}`, 'Laporan Sesi Hipnoterapi')}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg transition-colors"
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg transition-colors"
                       >
                         <FileText className="w-4 h-4" /> PDF
                       </button>
                       <button
                         onClick={() => handleDownloadDOCX(report, `Laporan_Sesi_${formData.clientName.replace(/\s+/g, '_') || 'Klien'}`, 'Laporan Sesi Hipnoterapi')}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg transition-colors"
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg transition-colors"
                       >
                         <Download className="w-4 h-4" /> DOCX
                       </button>
@@ -1207,10 +1288,10 @@ export default function App() {
                       <textarea
                         value={report}
                         onChange={(e) => setReport(e.target.value)}
-                        className="w-full min-h-[60vh] p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono text-sm text-slate-800 dark:text-slate-200 resize-y"
+                        className="w-full min-h-[60vh] p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 font-mono text-sm text-slate-800 dark:text-slate-200 resize-y"
                       />
                     ) : (
-                      <div className="prose prose-slate dark:prose-invert max-w-none prose-headings:font-semibold prose-h1:text-2xl prose-h2:text-xl prose-h3:text-lg prose-a:text-indigo-600 dark:prose-a:text-indigo-400 prose-li:my-0.5">
+                      <div className="prose prose-slate dark:prose-invert max-w-none prose-headings:font-semibold prose-h1:text-2xl prose-h2:text-xl prose-h3:text-lg prose-a:text-primary-600 dark:prose-a:text-primary-400 prose-li:my-0.5">
                         <div className="markdown-body">
                           <Markdown>{report}</Markdown>
                         </div>
@@ -1236,7 +1317,7 @@ export default function App() {
                           id="sessionsCount"
                           value={planSessionsCount}
                           onChange={(e) => setPlanSessionsCount(Number(e.target.value))}
-                          className="px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-slate-200"
+                          className="px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 dark:text-slate-200"
                         >
                           <option value={1}>1 Sesi</option>
                           <option value={2}>2 Sesi</option>
@@ -1248,13 +1329,13 @@ export default function App() {
 
                       <button
                         onClick={handleGeneratePlan}
-                        className="px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 transition-colors flex items-center gap-2"
+                        className="px-4 py-2 bg-primary-600 text-white font-medium rounded-lg hover:bg-primary-700 dark:bg-primary-500 dark:hover:bg-primary-600 transition-colors flex items-center gap-2"
                       >
                         <Sparkles className="w-4 h-4" /> Generate Rencana Sesi
                       </button>
                     </div>
                   ) : isGeneratingPlan ? (
-                    <div className="p-12 flex flex-col items-center justify-center text-indigo-500">
+                    <div className="p-12 flex flex-col items-center justify-center text-primary-500">
                       <Loader2 className="w-10 h-10 animate-spin mb-4" />
                       <p className="animate-pulse font-medium mb-6">Menyusun rencana sesi selanjutnya...</p>
                       <button
@@ -1271,31 +1352,31 @@ export default function App() {
                         <div className="flex flex-wrap items-center gap-1.5">
                           <button
                             onClick={() => setIsEditingPlan(!isEditingPlan)}
-                            className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${isEditingPlan ? 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300' : 'text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20'}`}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${isEditingPlan ? 'bg-primary-100 dark:bg-primary-900/50 text-primary-700 dark:text-primary-300' : 'text-slate-600 dark:text-slate-400 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20'}`}
                           >
                             {isEditingPlan ? <><Check className="w-4 h-4" /> Selesai Edit</> : <><Edit3 className="w-4 h-4" /> Edit</>}
                           </button>
                           {isEditingPlan && (
                             <>
-                              <button onClick={undoPlan} disabled={!canUndoPlan} className="flex items-center gap-1.5 px-2 py-1.5 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed" title="Undo"><Undo2 className="w-4 h-4" /></button>
-                              <button onClick={redoPlan} disabled={!canRedoPlan} className="flex items-center gap-1.5 px-2 py-1.5 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed" title="Redo"><Redo2 className="w-4 h-4" /></button>
+                              <button onClick={undoPlan} disabled={!canUndoPlan} className="flex items-center gap-1.5 px-2 py-1.5 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed" title="Undo"><Undo2 className="w-4 h-4" /></button>
+                              <button onClick={redoPlan} disabled={!canRedoPlan} className="flex items-center gap-1.5 px-2 py-1.5 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed" title="Redo"><Redo2 className="w-4 h-4" /></button>
                             </>
                           )}
                           <button
                             onClick={() => handleCopy(plan)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg transition-colors"
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg transition-colors"
                           >
                             <Copy className="w-4 h-4" /> {copied ? 'Tersalin!' : 'Salin'}
                           </button>
                           <button
                             onClick={() => handleDownloadPDF(plan, `Rencana_Sesi_${formData.clientName.replace(/\s+/g, '_') || 'Klien'}`, 'Rencana Sesi Selanjutnya')}
-                            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg transition-colors"
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg transition-colors"
                           >
                             <FileText className="w-4 h-4" /> PDF
                           </button>
                           <button
                             onClick={() => handleDownloadDOCX(plan, `Rencana_Sesi_${formData.clientName.replace(/\s+/g, '_') || 'Klien'}`, 'Rencana Sesi Selanjutnya')}
-                            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg transition-colors"
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg transition-colors"
                           >
                             <Download className="w-4 h-4" /> DOCX
                           </button>
@@ -1306,10 +1387,10 @@ export default function App() {
                           <textarea
                             value={plan}
                             onChange={(e) => setPlan(e.target.value)}
-                            className="w-full min-h-[60vh] p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono text-sm text-slate-800 dark:text-slate-200 resize-y"
+                            className="w-full min-h-[60vh] p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 font-mono text-sm text-slate-800 dark:text-slate-200 resize-y"
                           />
                         ) : (
-                          <div className="prose prose-slate dark:prose-invert max-w-none prose-headings:font-semibold prose-h1:text-2xl prose-h2:text-xl prose-h3:text-lg prose-a:text-indigo-600 dark:prose-a:text-indigo-400 prose-li:my-0.5">
+                          <div className="prose prose-slate dark:prose-invert max-w-none prose-headings:font-semibold prose-h1:text-2xl prose-h2:text-xl prose-h3:text-lg prose-a:text-primary-600 dark:prose-a:text-primary-400 prose-li:my-0.5">
                             <div className="markdown-body">
                               <Markdown>{plan}</Markdown>
                             </div>
@@ -1332,13 +1413,13 @@ export default function App() {
                       </p>
                       <button
                         onClick={handleGenerateClientReport}
-                        className="px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 transition-colors flex items-center gap-2"
+                        className="px-4 py-2 bg-primary-600 text-white font-medium rounded-lg hover:bg-primary-700 dark:bg-primary-500 dark:hover:bg-primary-600 transition-colors flex items-center gap-2"
                       >
                         <Sparkles className="w-4 h-4" /> Generate Laporan Klien
                       </button>
                     </div>
                   ) : isGeneratingClientReport ? (
-                    <div className="p-12 flex flex-col items-center justify-center text-indigo-500">
+                    <div className="p-12 flex flex-col items-center justify-center text-primary-500">
                       <Loader2 className="w-10 h-10 animate-spin mb-4" />
                       <p className="animate-pulse font-medium mb-6">Menyusun ringkasan untuk klien...</p>
                       <button
@@ -1355,31 +1436,31 @@ export default function App() {
                         <div className="flex flex-wrap items-center gap-1.5">
                           <button
                             onClick={() => setIsEditingClientReport(!isEditingClientReport)}
-                            className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${isEditingClientReport ? 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300' : 'text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20'}`}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${isEditingClientReport ? 'bg-primary-100 dark:bg-primary-900/50 text-primary-700 dark:text-primary-300' : 'text-slate-600 dark:text-slate-400 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20'}`}
                           >
                             {isEditingClientReport ? <><Check className="w-4 h-4" /> Selesai Edit</> : <><Edit3 className="w-4 h-4" /> Edit</>}
                           </button>
                           {isEditingClientReport && (
                             <>
-                              <button onClick={undoClientReport} disabled={!canUndoClientReport} className="flex items-center gap-1.5 px-2 py-1.5 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed" title="Undo"><Undo2 className="w-4 h-4" /></button>
-                              <button onClick={redoClientReport} disabled={!canRedoClientReport} className="flex items-center gap-1.5 px-2 py-1.5 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed" title="Redo"><Redo2 className="w-4 h-4" /></button>
+                              <button onClick={undoClientReport} disabled={!canUndoClientReport} className="flex items-center gap-1.5 px-2 py-1.5 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed" title="Undo"><Undo2 className="w-4 h-4" /></button>
+                              <button onClick={redoClientReport} disabled={!canRedoClientReport} className="flex items-center gap-1.5 px-2 py-1.5 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed" title="Redo"><Redo2 className="w-4 h-4" /></button>
                             </>
                           )}
                           <button
                             onClick={() => handleCopy(clientReport)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg transition-colors"
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg transition-colors"
                           >
                             <Copy className="w-4 h-4" /> {copied ? 'Tersalin!' : 'Salin'}
                           </button>
                           <button
                             onClick={() => handleDownloadPDF(clientReport, `Ringkasan_Sesi_${formData.clientName.replace(/\s+/g, '_') || 'Klien'}`, 'Ringkasan Sesi untuk Klien')}
-                            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg transition-colors"
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg transition-colors"
                           >
                             <FileText className="w-4 h-4" /> PDF
                           </button>
                           <button
                             onClick={() => handleDownloadDOCX(clientReport, `Ringkasan_Sesi_${formData.clientName.replace(/\s+/g, '_') || 'Klien'}`, 'Ringkasan Sesi untuk Klien')}
-                            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg transition-colors"
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg transition-colors"
                           >
                             <Download className="w-4 h-4" /> DOCX
                           </button>
@@ -1390,10 +1471,10 @@ export default function App() {
                           <textarea
                             value={clientReport}
                             onChange={(e) => setClientReport(e.target.value)}
-                            className="w-full min-h-[60vh] p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono text-sm text-slate-800 dark:text-slate-200 resize-y"
+                            className="w-full min-h-[60vh] p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 font-mono text-sm text-slate-800 dark:text-slate-200 resize-y"
                           />
                         ) : (
-                          <div className="prose prose-slate dark:prose-invert max-w-none prose-headings:font-semibold prose-h1:text-2xl prose-h2:text-xl prose-h3:text-lg prose-a:text-indigo-600 dark:prose-a:text-indigo-400 prose-li:my-0.5">
+                          <div className="prose prose-slate dark:prose-invert max-w-none prose-headings:font-semibold prose-h1:text-2xl prose-h2:text-xl prose-h3:text-lg prose-a:text-primary-600 dark:prose-a:text-primary-400 prose-li:my-0.5">
                             <div className="markdown-body">
                               <Markdown>{clientReport}</Markdown>
                             </div>
@@ -1416,13 +1497,13 @@ export default function App() {
                       </p>
                       <button
                         onClick={handleGenerateSuggestions}
-                        className="px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 transition-colors flex items-center gap-2"
+                        className="px-4 py-2 bg-primary-600 text-white font-medium rounded-lg hover:bg-primary-700 dark:bg-primary-500 dark:hover:bg-primary-600 transition-colors flex items-center gap-2"
                       >
                         <Sparkles className="w-4 h-4" /> Generate Saran & Tips
                       </button>
                     </div>
                   ) : isGeneratingSuggestions ? (
-                    <div className="p-12 flex flex-col items-center justify-center text-indigo-500">
+                    <div className="p-12 flex flex-col items-center justify-center text-primary-500">
                       <Loader2 className="w-10 h-10 animate-spin mb-4" />
                       <p className="animate-pulse font-medium mb-6">Menyusun saran dan tips...</p>
                       <button
@@ -1439,31 +1520,31 @@ export default function App() {
                         <div className="flex flex-wrap items-center gap-1.5">
                           <button
                             onClick={() => setIsEditingSuggestions(!isEditingSuggestions)}
-                            className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${isEditingSuggestions ? 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300' : 'text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20'}`}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${isEditingSuggestions ? 'bg-primary-100 dark:bg-primary-900/50 text-primary-700 dark:text-primary-300' : 'text-slate-600 dark:text-slate-400 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20'}`}
                           >
                             {isEditingSuggestions ? <><Check className="w-4 h-4" /> Selesai Edit</> : <><Edit3 className="w-4 h-4" /> Edit</>}
                           </button>
                           {isEditingSuggestions && (
                             <>
-                              <button onClick={undoSuggestions} disabled={!canUndoSuggestions} className="flex items-center gap-1.5 px-2 py-1.5 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed" title="Undo"><Undo2 className="w-4 h-4" /></button>
-                              <button onClick={redoSuggestions} disabled={!canRedoSuggestions} className="flex items-center gap-1.5 px-2 py-1.5 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed" title="Redo"><Redo2 className="w-4 h-4" /></button>
+                              <button onClick={undoSuggestions} disabled={!canUndoSuggestions} className="flex items-center gap-1.5 px-2 py-1.5 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed" title="Undo"><Undo2 className="w-4 h-4" /></button>
+                              <button onClick={redoSuggestions} disabled={!canRedoSuggestions} className="flex items-center gap-1.5 px-2 py-1.5 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed" title="Redo"><Redo2 className="w-4 h-4" /></button>
                             </>
                           )}
                           <button
                             onClick={() => handleCopy(suggestions)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg transition-colors"
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg transition-colors"
                           >
                             <Copy className="w-4 h-4" /> {copied ? 'Tersalin!' : 'Salin'}
                           </button>
                           <button
                             onClick={() => handleDownloadPDF(suggestions, `Saran_Tips_${formData.clientName.replace(/\s+/g, '_') || 'Klien'}`, 'Saran & Tips untuk Klien')}
-                            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg transition-colors"
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg transition-colors"
                           >
                             <FileText className="w-4 h-4" /> PDF
                           </button>
                           <button
                             onClick={() => handleDownloadDOCX(suggestions, `Saran_Tips_${formData.clientName.replace(/\s+/g, '_') || 'Klien'}`, 'Saran & Tips untuk Klien')}
-                            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg transition-colors"
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg transition-colors"
                           >
                             <Download className="w-4 h-4" /> DOCX
                           </button>
@@ -1474,10 +1555,10 @@ export default function App() {
                           <textarea
                             value={suggestions}
                             onChange={(e) => setSuggestions(e.target.value)}
-                            className="w-full min-h-[60vh] p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono text-sm text-slate-800 dark:text-slate-200 resize-y"
+                            className="w-full min-h-[60vh] p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 font-mono text-sm text-slate-800 dark:text-slate-200 resize-y"
                           />
                         ) : (
-                          <div className="prose prose-slate dark:prose-invert max-w-none prose-headings:font-semibold prose-h1:text-2xl prose-h2:text-xl prose-h3:text-lg prose-a:text-indigo-600 dark:prose-a:text-indigo-400 prose-li:my-0.5">
+                          <div className="prose prose-slate dark:prose-invert max-w-none prose-headings:font-semibold prose-h1:text-2xl prose-h2:text-xl prose-h3:text-lg prose-a:text-primary-600 dark:prose-a:text-primary-400 prose-li:my-0.5">
                             <div className="markdown-body">
                               <Markdown>{suggestions}</Markdown>
                             </div>
@@ -1490,11 +1571,23 @@ export default function App() {
               )}
             </div>
           )}
+
+          {/* AI Disclaimer */}
+          {report && !isGenerating && (
+            <div className="mt-4 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50 rounded-xl flex items-start gap-3 print:hidden shadow-sm">
+              <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="text-xs text-amber-800 dark:text-amber-300 leading-relaxed">
+                  <span className="font-bold">Penting:</span> Hasil yang dihasilkan oleh AI dapat mengandung kesalahan atau ketidakakuratan. Harap tinjau dan edit kembali laporan ini sebelum digunakan secara profesional.
+                </p>
+              </div>
+            </div>
+          )}
           
           <footer className="mt-12 py-6 border-t border-slate-200 dark:border-slate-800 text-center print:hidden">
             <p className="text-sm text-slate-500 dark:text-slate-400 flex items-center justify-center gap-2">
-              <Sparkles className="w-4 h-4 text-indigo-500" />
-              Aplikasi ini dikembangkan oleh <span className="font-bold text-indigo-600 dark:text-indigo-400">Soultiva AI Dev</span>
+              <Sparkles className="w-4 h-4 text-primary-500" />
+              Aplikasi ini dikembangkan oleh <span className="font-bold text-primary-600 dark:text-primary-400">Soultiva AI Dev</span>
             </p>
           </footer>
         </div>
@@ -1505,8 +1598,8 @@ export default function App() {
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
           <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-sm overflow-hidden flex flex-col border border-slate-200 dark:border-slate-800 animate-in fade-in zoom-in duration-200">
             <div className="p-6 text-center">
-              <div className="w-16 h-16 bg-indigo-100 dark:bg-indigo-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Sparkles className="w-8 h-8 text-indigo-600 dark:text-indigo-400" />
+              <div className="w-16 h-16 bg-primary-100 dark:bg-primary-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Sparkles className="w-8 h-8 text-primary-600 dark:text-primary-400" />
               </div>
               <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">
                 {confirmConfig.title}
@@ -1527,7 +1620,7 @@ export default function App() {
                   setShowConfirmModal(false);
                   confirmConfig.onConfirm();
                 }}
-                className="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-sm transition-colors"
+                className="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-primary-600 hover:bg-primary-700 rounded-xl shadow-sm transition-colors"
               >
                 Lanjutkan
               </button>
@@ -1542,7 +1635,7 @@ export default function App() {
           <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh] border border-slate-200 dark:border-slate-800">
             <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-950">
               <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2">
-                <Settings className="w-5 h-5 text-indigo-600 dark:text-indigo-400" /> Pengaturan
+                <Settings className="w-5 h-5 text-primary-600 dark:text-primary-400" /> Pengaturan
               </h2>
               <button 
                 onClick={() => setShowSettingsModal(false)}
@@ -1557,14 +1650,14 @@ export default function App() {
                 <FormInput 
                   label="Nama Terapis" 
                   id="therapistName" 
-                  placeholder="Contoh: Satria Siddik S.Psi, C.T, C.PHt, C.NLP" 
+                  placeholder="Contoh: Nama Lengkap & Gelar Anda" 
                   value={settings.therapistName} 
                   onChange={(e) => setSettings(prev => ({ ...prev, therapistName: e.target.value }))} 
                 />
                 <FormInput 
                   label="Nama Lembaga / Klinik" 
                   id="clinicName" 
-                  placeholder="Contoh: Rumah Terapi Sameera" 
+                  placeholder="Contoh: Nama Klinik atau Praktik Mandiri" 
                   value={settings.clinicName} 
                   onChange={(e) => setSettings(prev => ({ ...prev, clinicName: e.target.value }))} 
                 />
@@ -1591,6 +1684,35 @@ export default function App() {
                   ]}
                 />
 
+                <div className="space-y-2">
+                  <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1 flex items-center gap-2">
+                    <Sparkles size={14} className="text-primary-600" /> Tema Warna Aplikasi
+                  </label>
+                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                    {(['indigo', 'slate', 'blue', 'emerald', 'rose', 'amber'] as ThemeColor[]).map((color) => (
+                      <button
+                        key={color}
+                        onClick={() => setSettings(prev => ({ ...prev, themeColor: color }))}
+                        className={`h-10 rounded-lg border-2 transition-all flex items-center justify-center ${
+                          settings.themeColor === color 
+                            ? 'border-primary-600 ring-2 ring-primary-500/20' 
+                            : 'border-transparent hover:border-slate-200 dark:hover:border-slate-700'
+                        }`}
+                        title={color.charAt(0).toUpperCase() + color.slice(1)}
+                      >
+                        <div className={`w-6 h-6 rounded-full shadow-sm ${
+                          color === 'indigo' ? 'bg-primary-600' :
+                          color === 'slate' ? 'bg-slate-800' :
+                          color === 'blue' ? 'bg-blue-600' :
+                          color === 'emerald' ? 'bg-emerald-600' :
+                          color === 'rose' ? 'bg-rose-600' :
+                          'bg-amber-600'
+                        }`} />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 <div className="pt-4 border-t border-slate-100 dark:border-slate-800">
                   <button
                     onClick={() => setShowLogsModal(true)}
@@ -1602,7 +1724,7 @@ export default function App() {
 
                 <div className="pt-4 space-y-4">
                   <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2">
-                    <Key size={16} className="text-indigo-600 dark:text-indigo-400" />
+                    <Key size={16} className="text-primary-600 dark:text-primary-400" />
                     Setting API Key & Endpoint
                   </h3>
                   <div className="space-y-4 bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
@@ -1611,8 +1733,8 @@ export default function App() {
                         onClick={() => setSettings(prev => ({ ...prev, apiSettings: { ...prev.apiSettings, provider: 'Gemini' } }))}
                         className={`flex-1 py-2 px-3 rounded-lg border text-xs font-medium transition-all ${
                           settings.apiSettings.provider === 'Gemini'
-                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
-                            : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-300 dark:border-slate-700 hover:border-indigo-600'
+                            ? 'bg-primary-600 text-white border-primary-600 shadow-sm'
+                            : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-300 dark:border-slate-700 hover:border-primary-600'
                         }`}
                       >
                         Google Gen AI
@@ -1621,8 +1743,8 @@ export default function App() {
                         onClick={() => setSettings(prev => ({ ...prev, apiSettings: { ...prev.apiSettings, provider: 'LiteLLM' } }))}
                         className={`flex-1 py-2 px-3 rounded-lg border text-xs font-medium transition-all ${
                           settings.apiSettings.provider === 'LiteLLM'
-                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
-                            : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-300 dark:border-slate-700 hover:border-indigo-600'
+                            ? 'bg-primary-600 text-white border-primary-600 shadow-sm'
+                            : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-300 dark:border-slate-700 hover:border-primary-600'
                         }`}
                       >
                         LiteLLM Proxy
@@ -1642,7 +1764,7 @@ export default function App() {
                               console.error("Failed to open key selector", e);
                             }
                           }}
-                          className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-indigo-50 dark:bg-indigo-900/20 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 rounded-lg transition-all font-medium text-xs border border-indigo-100 dark:border-indigo-800/30"
+                          className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-primary-50 dark:bg-primary-900/20 hover:bg-primary-100 dark:hover:bg-primary-900/40 text-primary-700 dark:text-primary-300 rounded-lg transition-all font-medium text-xs border border-primary-100 dark:border-primary-800/30"
                         >
                           <Key className="w-4 h-4" /> Pilih / Ganti API Key
                         </button>
@@ -1674,7 +1796,7 @@ export default function App() {
                             <select
                               value={settings.apiSettings.selectedModel}
                               onChange={(e) => setSettings(prev => ({ ...prev, apiSettings: { ...prev.apiSettings, selectedModel: e.target.value } }))}
-                              className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all appearance-none text-xs text-slate-900 dark:text-slate-100"
+                              className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all appearance-none text-xs text-slate-900 dark:text-slate-100"
                               disabled={isFetchingModels || liteLLMModels.length === 0}
                             >
                               {isFetchingModels ? (
@@ -1701,12 +1823,12 @@ export default function App() {
                 <div className="mt-8 pt-6 border-t border-slate-100 dark:border-slate-800 text-center">
                   <button
                     onClick={() => setShowLogsModal(true)}
-                    className="flex items-center justify-center gap-2 w-full px-4 py-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 dark:text-slate-400 dark:hover:text-indigo-400 dark:hover:bg-slate-800 rounded-lg transition-colors text-xs font-medium border border-slate-200 dark:border-slate-800 mb-4"
+                    className="flex items-center justify-center gap-2 w-full px-4 py-2 text-slate-500 hover:text-primary-600 hover:bg-primary-50 dark:text-slate-400 dark:hover:text-primary-400 dark:hover:bg-slate-800 rounded-lg transition-colors text-xs font-medium border border-slate-200 dark:border-slate-800 mb-4"
                   >
                     <FileText className="w-4 h-4" />
                     Buka Application Logs
                   </button>
-                  <p className="text-[10px] font-semibold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
+                  <p className="text-[10px] font-semibold text-primary-600 dark:text-primary-400 uppercase tracking-wider">
                     Developed by Soultiva AI Dev
                   </p>
                 </div>
@@ -1715,7 +1837,7 @@ export default function App() {
             <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 flex justify-end">
               <button 
                 onClick={() => setShowSettingsModal(false)}
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors font-medium text-sm"
+                className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors font-medium text-sm"
               >
                 Simpan & Tutup
               </button>
@@ -1730,7 +1852,7 @@ export default function App() {
           <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col overflow-hidden">
             <div className="p-6 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center">
               <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                <History className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
+                <History className="w-6 h-6 text-primary-600 dark:text-primary-400" />
                 Riwayat Laporan
               </h2>
               <button 
@@ -1752,7 +1874,7 @@ export default function App() {
                     <div 
                       key={item.id} 
                       onClick={() => loadFromHistory(item)}
-                      className="p-4 border border-slate-200 dark:border-slate-800 rounded-xl hover:border-indigo-300 dark:hover:border-indigo-500/50 hover:bg-indigo-50/50 dark:hover:bg-indigo-900/10 cursor-pointer transition-all group"
+                      className="p-4 border border-slate-200 dark:border-slate-800 rounded-xl hover:border-primary-300 dark:hover:border-primary-500/50 hover:bg-primary-50/50 dark:hover:bg-primary-900/10 cursor-pointer transition-all group"
                     >
                       <div className="flex justify-between items-start mb-2">
                         <h3 className="font-semibold text-slate-900 dark:text-white text-lg">
@@ -1790,7 +1912,7 @@ export default function App() {
           <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-4xl max-h-[80vh] flex flex-col overflow-hidden border border-slate-200 dark:border-slate-800">
             <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-950">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-indigo-100 dark:bg-indigo-900/40 rounded-lg text-indigo-600 dark:text-indigo-400">
+                <div className="p-2 bg-primary-100 dark:bg-primary-900/40 rounded-lg text-primary-600 dark:text-primary-400">
                   <FileText size={20} />
                 </div>
                 <div>
@@ -1850,7 +1972,7 @@ export default function App() {
             <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-right">
               <button
                 onClick={() => setShowLogsModal(false)}
-                className="px-6 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-all font-medium text-sm"
+                className="px-6 py-2 bg-primary-600 text-white rounded-xl hover:bg-primary-700 transition-all font-medium text-sm"
               >
                 Tutup
               </button>
