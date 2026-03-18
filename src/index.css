@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+@theme {
+  --variant-dark: .dark &;
+}
+
 @layer utilities {
   .markdown-body {
     @apply text-slate-800 dark:text-slate-200 text-sm leading-relaxed;

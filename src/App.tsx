@@ -5,7 +5,7 @@ import Markdown from 'react-markdown';
 import { marked } from 'marked';
 import { useUndo } from './hooks/useUndo';
 import { FastChoice } from './components/FastChoice';
-import { Copy, Download, Loader2, Sparkles, User as UserIcon, Activity, BrainCircuit, FileCheck, Save, History, LogOut, LogIn, Edit3, Check, Undo2, Redo2, ImagePlus, CalendarPlus, Upload, MessageSquareHeart, FileText, Lightbulb, Moon, Sun, Trash2, Settings, Key, CreditCard } from 'lucide-react';
+import { Copy, Download, Loader2, Sparkles, User as UserIcon, Activity, BrainCircuit, FileCheck, Save, History, LogOut, LogIn, Edit3, Check, Undo2, Redo2, ImagePlus, CalendarPlus, Upload, MessageSquareHeart, FileText, Lightbulb, Moon, Sun, Trash2, Settings, Key, CreditCard, XCircle } from 'lucide-react';
 import html2pdf from 'html2pdf.js';
 import { saveAs } from 'file-saver';
 
@@ -30,7 +30,8 @@ interface HistoryItem {
 interface SettingsData {
   therapistName: string;
   clinicName: string;
-  charCountRange: '250-500' | '500-800' | '800-1000';
+  charCountRange: '250-500' | '500-800' | '800-1000' | 'unlimited';
+  modelPreference: 'Pro' | 'Flash';
   prompts: {
     clinicalReport: string;
     nextSessionPlan: string;
@@ -176,7 +177,10 @@ export default function App() {
   const [isAnalyzingImage, setIsAnalyzingImage] = useState(false);
 
   // Dark Mode & History State
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    const savedTheme = localStorage.getItem('theragen_theme');
+    return savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  });
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
 
@@ -185,6 +189,7 @@ export default function App() {
     therapistName: 'Satria Siddik S.Psi, C.T, C.PHt, C.NLP',
     clinicName: 'Rumah Terapi Sameera',
     charCountRange: '500-800',
+    modelPreference: 'Pro',
     prompts: DEFAULT_PROMPTS
   });
   const [showSettingsModal, setShowSettingsModal] = useState(false);
@@ -193,6 +198,9 @@ export default function App() {
   const [creditState, setCreditState] = useState<CreditState>(defaultCreditState);
   const [showRedeemModal, setShowRedeemModal] = useState(false);
   const [redeemKey, setRedeemKey] = useState("");
+
+  // Cancellation State
+  const cancelRef = React.useRef(false);
 
   // Confirmation Modal State
   const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -234,6 +242,7 @@ export default function App() {
         setSettings({
           ...parsed,
           charCountRange: parsed.charCountRange || '500-800',
+          modelPreference: parsed.modelPreference || 'Pro',
           prompts: parsed.prompts || DEFAULT_PROMPTS
         });
       } catch (e) {
@@ -249,12 +258,6 @@ export default function App() {
         console.error("Failed to parse credits data");
       }
     }
-
-    const savedTheme = localStorage.getItem('theragen_theme');
-    if (savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-      setIsDarkMode(true);
-      document.documentElement.classList.add('dark');
-    }
   }, []);
 
   // Save settings to LocalStorage
@@ -267,18 +270,19 @@ export default function App() {
     localStorage.setItem(CREDITS_KEY, JSON.stringify(creditState));
   }, [creditState]);
 
+  // Sync Dark Mode with DOM
+  useEffect(() => {
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('theragen_theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('theragen_theme', 'light');
+    }
+  }, [isDarkMode]);
+
   const toggleDarkMode = () => {
-    setIsDarkMode(prev => {
-      const newMode = !prev;
-      if (newMode) {
-        document.documentElement.classList.add('dark');
-        localStorage.setItem('theragen_theme', 'dark');
-      } else {
-        document.documentElement.classList.remove('dark');
-        localStorage.setItem('theragen_theme', 'light');
-      }
-      return newMode;
-    });
+    setIsDarkMode(prev => !prev);
   };
 
   const saveToHistory = () => {
@@ -408,18 +412,46 @@ export default function App() {
     return true;
   };
 
+  const handleCancel = () => {
+    cancelRef.current = true;
+    setIsGenerating(false);
+    setIsGeneratingAll(false);
+    setIsGeneratingPlan(false);
+    setIsGeneratingClientReport(false);
+    setIsGeneratingSuggestions(false);
+    setError('Proses dibatalkan oleh pengguna.');
+  };
+
   const handleGenerate = async () => {
+    cancelRef.current = false;
     setIsGenerating(true);
     setError('');
     setIsEditing(false);
     setActiveTab('report');
+    resetReport(''); // Clear previous report
     try {
-      const generatedReport = await generateClinicalReport(formData, settings.therapistName, settings.clinicName, settings.prompts.clinicalReport, settings.charCountRange);
+      let fullText = '';
+      const generatedReport = await generateClinicalReport(
+        formData, 
+        settings.therapistName, 
+        settings.clinicName, 
+        settings.prompts.clinicalReport, 
+        settings.charCountRange,
+        (chunk) => {
+          if (cancelRef.current) return;
+          fullText += chunk;
+          resetReport(fullText);
+        },
+        settings.modelPreference
+      );
+      if (cancelRef.current) return;
       resetReport(generatedReport);
       resetPlan(''); // Clear previous plan when generating new report
       resetClientReport(''); // Clear previous client report
     } catch (err: any) {
-      setError(err.message || 'Terjadi kesalahan saat membuat laporan.');
+      if (!cancelRef.current) {
+        setError(err.message || 'Terjadi kesalahan saat membuat laporan.');
+      }
     } finally {
       setIsGenerating(false);
     }
@@ -427,15 +459,19 @@ export default function App() {
 
   const handleGeneratePlan = async () => {
     if (!report) return;
+    cancelRef.current = false;
     setIsGeneratingPlan(true);
     setError('');
     setIsEditingPlan(false);
     try {
-      const generatedPlan = await generateNextSessionPlan(formData, report, planSessionsCount, settings.therapistName, settings.clinicName, settings.prompts.nextSessionPlan, settings.charCountRange);
+      const generatedPlan = await generateNextSessionPlan(formData, report, planSessionsCount, settings.therapistName, settings.clinicName, settings.prompts.nextSessionPlan, settings.charCountRange, settings.modelPreference);
+      if (cancelRef.current) return;
       resetPlan(generatedPlan);
       setActiveTab('plan');
     } catch (err: any) {
-      setError(err.message || 'Terjadi kesalahan saat membuat rencana sesi.');
+      if (!cancelRef.current) {
+        setError(err.message || 'Terjadi kesalahan saat membuat rencana sesi.');
+      }
     } finally {
       setIsGeneratingPlan(false);
     }
@@ -443,15 +479,19 @@ export default function App() {
 
   const handleGenerateClientReport = async () => {
     if (!report) return;
+    cancelRef.current = false;
     setIsGeneratingClientReport(true);
     setError('');
     setIsEditingClientReport(false);
     try {
-      const generatedClientReport = await generateClientReport(formData, report, settings.therapistName, settings.clinicName, settings.prompts.clientReport, settings.charCountRange);
+      const generatedClientReport = await generateClientReport(formData, report, settings.therapistName, settings.clinicName, settings.prompts.clientReport, settings.charCountRange, settings.modelPreference);
+      if (cancelRef.current) return;
       resetClientReport(generatedClientReport);
       setActiveTab('client');
     } catch (err: any) {
-      setError(err.message || 'Terjadi kesalahan saat membuat ringkasan untuk klien.');
+      if (!cancelRef.current) {
+        setError(err.message || 'Terjadi kesalahan saat membuat ringkasan untuk klien.');
+      }
     } finally {
       setIsGeneratingClientReport(false);
     }
@@ -459,15 +499,19 @@ export default function App() {
 
   const handleGenerateSuggestions = async () => {
     if (!report) return;
+    cancelRef.current = false;
     setIsGeneratingSuggestions(true);
     setError('');
     setIsEditingSuggestions(false);
     try {
-      const generatedSuggestions = await generateSuggestionsAndTips(formData, report, settings.therapistName, settings.clinicName, settings.prompts.suggestions, settings.charCountRange);
+      const generatedSuggestions = await generateSuggestionsAndTips(formData, report, settings.therapistName, settings.clinicName, settings.prompts.suggestions, settings.charCountRange, settings.modelPreference);
+      if (cancelRef.current) return;
       resetSuggestions(generatedSuggestions);
       setActiveTab('suggestions');
     } catch (err: any) {
-      setError(err.message || 'Terjadi kesalahan saat membuat saran dan tips.');
+      if (!cancelRef.current) {
+        setError(err.message || 'Terjadi kesalahan saat membuat saran dan tips.');
+      }
     } finally {
       setIsGeneratingSuggestions(false);
     }
@@ -485,6 +529,7 @@ export default function App() {
       async () => {
         if (!checkAndDeductCredit()) return;
 
+        cancelRef.current = false;
         setIsGeneratingAll(true);
         setError('');
         setIsEditing(false);
@@ -495,28 +540,52 @@ export default function App() {
         
         try {
           setIsGenerating(true);
-          const generatedReport = await generateClinicalReport(formData, settings.therapistName, settings.clinicName, settings.prompts.clinicalReport, settings.charCountRange);
+          resetReport('');
+          let fullText = '';
+          const generatedReport = await generateClinicalReport(
+            formData, 
+            settings.therapistName, 
+            settings.clinicName, 
+            settings.prompts.clinicalReport, 
+            settings.charCountRange,
+            (chunk) => {
+              if (cancelRef.current) return;
+              fullText += chunk;
+              resetReport(fullText);
+            },
+            settings.modelPreference
+          );
+          if (cancelRef.current) return;
           resetReport(generatedReport);
           setIsGenerating(false);
 
+          // Run the rest in parallel as they all depend on generatedReport
           setIsGeneratingPlan(true);
-          const generatedPlan = await generateNextSessionPlan(formData, generatedReport, planSessionsCount, settings.therapistName, settings.clinicName, settings.prompts.nextSessionPlan, settings.charCountRange);
+          setIsGeneratingClientReport(true);
+          setIsGeneratingSuggestions(true);
+
+          const [generatedPlan, generatedClientReport, generatedSuggestions] = await Promise.all([
+            generateNextSessionPlan(formData, generatedReport, planSessionsCount, settings.therapistName, settings.clinicName, settings.prompts.nextSessionPlan, settings.charCountRange, settings.modelPreference),
+            generateClientReport(formData, generatedReport, settings.therapistName, settings.clinicName, settings.prompts.clientReport, settings.charCountRange, settings.modelPreference),
+            generateSuggestionsAndTips(formData, generatedReport, settings.therapistName, settings.clinicName, settings.prompts.suggestions, settings.charCountRange, settings.modelPreference)
+          ]);
+
+          if (cancelRef.current) return;
+
           resetPlan(generatedPlan);
           setIsGeneratingPlan(false);
 
-          setIsGeneratingClientReport(true);
-          const generatedClientReport = await generateClientReport(formData, generatedReport, settings.therapistName, settings.clinicName, settings.prompts.clientReport, settings.charCountRange);
           resetClientReport(generatedClientReport);
           setIsGeneratingClientReport(false);
 
-          setIsGeneratingSuggestions(true);
-          const generatedSuggestions = await generateSuggestionsAndTips(formData, generatedReport, settings.therapistName, settings.clinicName, settings.prompts.suggestions, settings.charCountRange);
           resetSuggestions(generatedSuggestions);
           setIsGeneratingSuggestions(false);
 
           // alert(`Semua laporan berhasil di-generate! Sisa saldo kredit: ${creditState.current_credit - 1}`);
         } catch (err: any) {
-          setError(err.message || 'Terjadi kesalahan saat membuat laporan.');
+          if (!cancelRef.current) {
+            setError(err.message || 'Terjadi kesalahan saat membuat laporan.');
+          }
           setIsGenerating(false);
           setIsGeneratingPlan(false);
           setIsGeneratingClientReport(false);
@@ -981,42 +1050,36 @@ export default function App() {
 
         {/* Floating Action Button for Generate */}
         <div className="fixed bottom-0 left-0 w-full md:w-1/2 lg:w-[45%] bg-white dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 p-4 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-10 print:hidden flex gap-3">
-            <button
-              onClick={handleGenerate}
-              disabled={isGenerating || isGeneratingAll}
-              className="flex-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:hover:bg-indigo-900/50 dark:text-indigo-300 font-medium py-3 px-4 rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
-              title="Hanya generate Laporan Sesi"
-            >
-              {isGenerating && !isGeneratingAll ? (
-                <>
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  Menyusun...
-                </>
-              ) : (
-                <>
+            {(isGenerating || isGeneratingAll || isGeneratingPlan || isGeneratingClientReport || isGeneratingSuggestions) ? (
+              <button
+                onClick={handleCancel}
+                className="flex-1 bg-red-50 hover:bg-red-100 text-red-600 dark:bg-red-900/20 dark:hover:bg-red-900/40 dark:text-red-400 font-medium py-3 px-4 rounded-xl transition-all flex items-center justify-center gap-2"
+              >
+                <XCircle className="w-5 h-5" />
+                Batal Generate
+              </button>
+            ) : (
+              <>
+                <button
+                  onClick={handleGenerate}
+                  disabled={isGenerating || isGeneratingAll}
+                  className="flex-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:hover:bg-indigo-900/50 dark:text-indigo-300 font-medium py-3 px-4 rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+                  title="Hanya generate Laporan Sesi"
+                >
                   <FileCheck className="w-5 h-5" />
                   Laporan Saja
-                </>
-              )}
-            </button>
-            <button
-              onClick={handleGenerateAll}
-              disabled={isGeneratingAll || isGenerating}
-              className="flex-[2] bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-3 px-4 rounded-xl shadow-sm transition-all flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
-              title="Generate Laporan, Rencana, Laporan Klien, dan Saran sekaligus"
-            >
-              {isGeneratingAll ? (
-                <>
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  Menyusun Semua...
-                </>
-              ) : (
-                <>
+                </button>
+                <button
+                  onClick={handleGenerateAll}
+                  disabled={isGeneratingAll || isGenerating}
+                  className="flex-[2] bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-3 px-4 rounded-xl shadow-sm transition-all flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+                  title="Generate Laporan, Rencana, Laporan Klien, dan Saran sekaligus"
+                >
                   <Sparkles className="w-5 h-5" />
                   Generate Semua
-                </>
-              )}
-            </button>
+                </button>
+              </>
+            )}
           </div>
       </div>
 
@@ -1042,7 +1105,13 @@ export default function App() {
           {isGenerating && (
             <div className="h-full min-h-[60vh] flex flex-col items-center justify-center text-indigo-500 dark:text-indigo-400 print:hidden">
               <Loader2 className="w-12 h-12 animate-spin mb-4" />
-              <p className="animate-pulse font-medium">AI sedang menganalisis dan menyusun laporan...</p>
+              <p className="animate-pulse font-medium mb-6">AI sedang menganalisis dan menyusun laporan...</p>
+              <button
+                onClick={handleCancel}
+                className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 dark:bg-red-900/20 dark:hover:bg-red-900/40 dark:text-red-400 font-medium rounded-lg transition-all flex items-center gap-2"
+              >
+                <XCircle className="w-4 h-4" /> Batal Generate
+              </button>
             </div>
           )}
 
@@ -1190,7 +1259,13 @@ export default function App() {
                   ) : isGeneratingPlan ? (
                     <div className="p-12 flex flex-col items-center justify-center text-indigo-500">
                       <Loader2 className="w-10 h-10 animate-spin mb-4" />
-                      <p className="animate-pulse font-medium">Menyusun rencana sesi selanjutnya...</p>
+                      <p className="animate-pulse font-medium mb-6">Menyusun rencana sesi selanjutnya...</p>
+                      <button
+                        onClick={handleCancel}
+                        className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 dark:bg-red-900/20 dark:hover:bg-red-900/40 dark:text-red-400 font-medium rounded-lg transition-all flex items-center gap-2"
+                      >
+                        <XCircle className="w-4 h-4" /> Batal
+                      </button>
                     </div>
                   ) : (
                     <>
@@ -1268,7 +1343,13 @@ export default function App() {
                   ) : isGeneratingClientReport ? (
                     <div className="p-12 flex flex-col items-center justify-center text-indigo-500">
                       <Loader2 className="w-10 h-10 animate-spin mb-4" />
-                      <p className="animate-pulse font-medium">Menyusun ringkasan untuk klien...</p>
+                      <p className="animate-pulse font-medium mb-6">Menyusun ringkasan untuk klien...</p>
+                      <button
+                        onClick={handleCancel}
+                        className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 dark:bg-red-900/20 dark:hover:bg-red-900/40 dark:text-red-400 font-medium rounded-lg transition-all flex items-center gap-2"
+                      >
+                        <XCircle className="w-4 h-4" /> Batal
+                      </button>
                     </div>
                   ) : (
                     <>
@@ -1346,7 +1427,13 @@ export default function App() {
                   ) : isGeneratingSuggestions ? (
                     <div className="p-12 flex flex-col items-center justify-center text-indigo-500">
                       <Loader2 className="w-10 h-10 animate-spin mb-4" />
-                      <p className="animate-pulse font-medium">Menyusun saran dan tips...</p>
+                      <p className="animate-pulse font-medium mb-6">Menyusun saran dan tips...</p>
+                      <button
+                        onClick={handleCancel}
+                        className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 dark:bg-red-900/20 dark:hover:bg-red-900/40 dark:text-red-400 font-medium rounded-lg transition-all flex items-center gap-2"
+                      >
+                        <XCircle className="w-4 h-4" /> Batal
+                      </button>
                     </div>
                   ) : (
                     <>
@@ -1552,7 +1639,18 @@ export default function App() {
                   options={[
                     { value: '250-500', label: '250 - 500 Karakter (Hemat Token)' },
                     { value: '500-800', label: '500 - 800 Karakter (Standar)' },
-                    { value: '800-1000', label: '800 - 1000 Karakter (Lengkap)' }
+                    { value: '800-1000', label: '800 - 1000 Karakter (Lengkap)' },
+                    { value: 'unlimited', label: 'Tanpa Batasan (Sangat Detail)' }
+                  ]}
+                />
+                <FormSelect
+                  label="Preferensi Model AI (Kecepatan vs Kualitas)"
+                  id="modelPreference"
+                  value={settings.modelPreference}
+                  onChange={(e) => setSettings(prev => ({ ...prev, modelPreference: e.target.value as any }))}
+                  options={[
+                    { value: 'Flash', label: 'Gemini Flash (Sangat Cepat, Kualitas Standar)' },
+                    { value: 'Pro', label: 'Gemini Pro (Lebih Lambat, Kualitas Klinis Tinggi)' }
                   ]}
                 />
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">

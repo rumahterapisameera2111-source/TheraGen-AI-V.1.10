@@ -55,6 +55,8 @@ PROSES TERAPI & INTERVENSI:
 - Kedalaman Trance (jika relevan): {{TRANCE_DEPTH}}
 - Dinamika Sesi & Insight: {{SESSION_DYNAMICS}}
 
+Tugas Anda adalah menguraikan poin-poin di atas menjadi narasi yang mengalir, profesional, dan mendalam. Jangan hanya mengulang kata-kata, tetapi interpretasikan secara klinis bagaimana teknik tersebut membantu klien dan apa insight utama yang muncul.
+
 HASIL & TINDAK LANJUT:
 - Skala SUD Akhir (1-10): {{FINAL_SUD}}
 - Observasi Pasca-Sesi: {{POST_OBSERVATION}}
@@ -167,9 +169,11 @@ function buildPrompt(template: string, data: SessionData, therapistName: string,
   const styleInstruction = 
     data.reportStyle === 'Concise' ? 'Buat laporan yang sangat padat, singkat, dan langsung pada intinya (bullet points dominan).' :
     data.reportStyle === 'Empathy-focused' ? 'Buat laporan yang menonjolkan empati, dinamika emosional klien, dan proses terapeutik yang mendalam.' :
-    'Buat laporan yang detail, komprehensif, dan mencakup semua aspek klinis secara menyeluruh.';
+    'Buat laporan yang sangat detail, komprehensif, deskriptif, dan mencakup semua aspek klinis secara menyeluruh. Jangan ragu untuk menjabarkan dinamika sesi secara naratif dan mendalam.';
 
-  const charCountInstruction = extra.charCountRange ? `PENTING: Batasi panjang teks laporan ini agar berada dalam rentang ${extra.charCountRange} karakter.` : '';
+  const charCountInstruction = (extra.charCountRange && extra.charCountRange !== 'unlimited') 
+    ? `PENTING: Batasi panjang teks laporan ini agar berada dalam rentang ${extra.charCountRange} karakter.` 
+    : 'Berikan penjelasan yang selengkap mungkin tanpa batasan karakter yang ketat.';
 
   const replacements: Record<string, string> = {
     '{{THERAPIST_NAME}}': therapistName || '-',
@@ -280,13 +284,15 @@ Jika ada field yang tidak ditemukan di catatan, kosongkan saja string-nya ("").`
   }
 }
 
-export async function generateNextSessionPlan(data: SessionData, report: string, planSessionsCount: number = 1, therapistName: string, clinicName: string, customPrompt?: string, charCountRange?: string): Promise<string> {
+export async function generateNextSessionPlan(data: SessionData, report: string, planSessionsCount: number = 1, therapistName: string, clinicName: string, customPrompt?: string, charCountRange?: string, modelPreference: 'Pro' | 'Flash' = 'Pro'): Promise<string> {
   const template = customPrompt || DEFAULT_PROMPTS.nextSessionPlan;
   const prompt = buildPrompt(template, data, therapistName, clinicName, { report, planSessionsCount, charCountRange });
 
+  const model = modelPreference === 'Flash' ? "gemini-3-flash-preview" : "gemini-3.1-pro-preview";
+
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3.1-pro-preview",
+      model: model,
       contents: prompt,
       config: {
         temperature: 0.5,
@@ -300,33 +306,62 @@ export async function generateNextSessionPlan(data: SessionData, report: string,
   }
 }
 
-export async function generateClinicalReport(data: SessionData, therapistName: string, clinicName: string, customPrompt?: string, charCountRange?: string): Promise<string> {
+export async function generateClinicalReport(data: SessionData, therapistName: string, clinicName: string, customPrompt?: string, charCountRange?: string, onChunk?: (chunk: string) => void, modelPreference: 'Pro' | 'Flash' = 'Pro'): Promise<string> {
   const template = customPrompt || DEFAULT_PROMPTS.clinicalReport;
   const prompt = buildPrompt(template, data, therapistName, clinicName, { charCountRange });
 
+  const model = modelPreference === 'Flash' ? "gemini-3-flash-preview" : "gemini-3.1-pro-preview";
+
+  const temperature = 
+    data.reportStyle === 'Concise' ? 0.3 :
+    data.reportStyle === 'Empathy-focused' ? 0.6 :
+    0.5;
+
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-3.1-pro-preview",
-      contents: prompt,
-      config: {
-        temperature: 0.4,
+    if (onChunk) {
+      const response = await ai.models.generateContentStream({
+        model: model,
+        contents: prompt,
+        config: {
+          temperature: temperature,
+        }
+      });
+
+      let fullText = "";
+      for await (const chunk of response) {
+        const text = chunk.text;
+        if (text) {
+          fullText += text;
+          onChunk(text);
+        }
       }
-    });
-    
-    return response.text || "Gagal menghasilkan laporan.";
+      return fullText;
+    } else {
+      const response = await ai.models.generateContent({
+        model: model,
+        contents: prompt,
+        config: {
+          temperature: temperature,
+        }
+      });
+      
+      return response.text || "Gagal menghasilkan laporan.";
+    }
   } catch (error) {
     console.error("Error generating report:", error);
     throw new Error("Terjadi kesalahan saat menghubungi AI. Pastikan API Key valid.");
   }
 }
 
-export async function generateClientReport(data: SessionData, report: string, therapistName: string, clinicName: string, customPrompt?: string, charCountRange?: string): Promise<string> {
+export async function generateClientReport(data: SessionData, report: string, therapistName: string, clinicName: string, customPrompt?: string, charCountRange?: string, modelPreference: 'Pro' | 'Flash' = 'Pro'): Promise<string> {
   const template = customPrompt || DEFAULT_PROMPTS.clientReport;
   const prompt = buildPrompt(template, data, therapistName, clinicName, { report, charCountRange });
 
+  const model = modelPreference === 'Flash' ? "gemini-3-flash-preview" : "gemini-3.1-pro-preview";
+
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3.1-pro-preview",
+      model: model,
       contents: prompt,
       config: {
         temperature: 0.6,
@@ -340,13 +375,15 @@ export async function generateClientReport(data: SessionData, report: string, th
   }
 }
 
-export async function generateSuggestionsAndTips(data: SessionData, report: string, therapistName: string, clinicName: string, customPrompt?: string, charCountRange?: string): Promise<string> {
+export async function generateSuggestionsAndTips(data: SessionData, report: string, therapistName: string, clinicName: string, customPrompt?: string, charCountRange?: string, modelPreference: 'Pro' | 'Flash' = 'Pro'): Promise<string> {
   const template = customPrompt || DEFAULT_PROMPTS.suggestions;
   const prompt = buildPrompt(template, data, therapistName, clinicName, { report, charCountRange });
 
+  const model = modelPreference === 'Flash' ? "gemini-3-flash-preview" : "gemini-3.1-pro-preview";
+
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3.1-pro-preview",
+      model: model,
       contents: prompt,
       config: {
         temperature: 0.7,
