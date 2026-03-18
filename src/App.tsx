@@ -1731,13 +1731,16 @@ export default function App() {
                     <div className="flex gap-2">
                       <button
                         onClick={() => setSettings(prev => ({ ...prev, apiSettings: { ...prev.apiSettings, provider: 'Gemini' } }))}
-                        className={`flex-1 py-2 px-3 rounded-lg border text-xs font-medium transition-all ${
+                        className={`flex-1 py-2 px-3 rounded-lg border text-xs font-medium transition-all relative ${
                           settings.apiSettings.provider === 'Gemini'
                             ? 'bg-primary-600 text-white border-primary-600 shadow-sm'
                             : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-300 dark:border-slate-700 hover:border-primary-600'
                         }`}
                       >
                         Google Gen AI
+                        <span className={`absolute -top-2 -right-1 px-1.5 py-0.5 rounded-md text-[8px] font-bold uppercase tracking-tighter ${
+                          settings.apiSettings.provider === 'Gemini' ? 'bg-white text-primary-600' : 'bg-primary-600 text-white'
+                        }`}>Bawaan</span>
                       </button>
                       <button
                         onClick={() => setSettings(prev => ({ ...prev, apiSettings: { ...prev.apiSettings, provider: 'LiteLLM' } }))}
@@ -1753,9 +1756,14 @@ export default function App() {
 
                     {settings.apiSettings.provider === 'Gemini' ? (
                       <div className="space-y-3">
-                        <p className="text-[10px] text-slate-500 dark:text-slate-400 italic">
-                          Menggunakan endpoint resmi Google Gemini. Jika kuota habis, Anda bisa menggunakan API Key sendiri.
-                        </p>
+                        <div className="p-3 bg-primary-50/50 dark:bg-primary-900/10 border border-primary-100/50 dark:border-primary-800/20 rounded-lg">
+                          <p className="text-[10px] text-primary-800 dark:text-primary-300 leading-relaxed">
+                            <span className="font-bold">Mode Bawaan:</span> Aplikasi sudah dikonfigurasi menggunakan Google Gemini secara otomatis. Anda tidak perlu melakukan pengaturan API Key tambahan untuk mulai menggunakan aplikasi.
+                          </p>
+                          <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-2 italic">
+                            Gunakan tombol di bawah jika Anda ingin menggunakan API Key pribadi Anda (misal: jika kuota bawaan habis).
+                          </p>
+                        </div>
                         <button
                           onClick={async () => {
                             try {
@@ -1764,13 +1772,18 @@ export default function App() {
                               console.error("Failed to open key selector", e);
                             }
                           }}
-                          className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-primary-50 dark:bg-primary-900/20 hover:bg-primary-100 dark:hover:bg-primary-900/40 text-primary-700 dark:text-primary-300 rounded-lg transition-all font-medium text-xs border border-primary-100 dark:border-primary-800/30"
+                          className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg transition-all font-medium text-xs border border-slate-200 dark:border-slate-700"
                         >
-                          <Key className="w-4 h-4" /> Pilih / Ganti API Key
+                          <Key className="w-4 h-4" /> Pilih / Ganti API Key Pribadi
                         </button>
                       </div>
                     ) : (
                       <div className="space-y-4">
+                        <div className="p-3 bg-amber-50/50 dark:bg-amber-900/10 border border-amber-100/50 dark:border-amber-800/20 rounded-lg">
+                          <p className="text-[10px] text-amber-800 dark:text-amber-300 leading-relaxed">
+                            <span className="font-bold">Mode Alternatif:</span> Gunakan LiteLLM jika Anda ingin menghubungkan ke model lain atau jika kuota Gemini bawaan telah habis.
+                          </p>
+                        </div>
                         <FormInput
                           label="LiteLLM Base URL"
                           value={settings.apiSettings.liteLLMBaseUrl}
