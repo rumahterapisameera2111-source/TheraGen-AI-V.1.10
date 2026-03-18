@@ -1085,7 +1085,7 @@ export default function App() {
                 <Sparkles className="w-5 h-5 text-slate-400 dark:text-slate-500" />
                 <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-200">Pengaturan Laporan</h2>
               </div>
-              <div className="w-full sm:w-1/2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <FormSelect 
                   label="Gaya Penulisan Laporan" 
                   id="reportStyle" 
@@ -1095,6 +1095,18 @@ export default function App() {
                     { value: 'Concise', label: 'Singkat & Padat (Concise)' },
                     { value: 'Detailed', label: 'Detail & Komprehensif' },
                     { value: 'Empathy-focused', label: 'Fokus Empati & Emosi' }
+                  ]}
+                />
+                <FormSelect
+                  label="Batasan Jumlah Karakter Laporan"
+                  id="charCountRange"
+                  value={settings.charCountRange}
+                  onChange={(e) => setSettings(prev => ({ ...prev, charCountRange: e.target.value as any }))}
+                  options={[
+                    { value: '500-800', label: '500 - 800 Karakter (Hemat)' },
+                    { value: '800-1500', label: '800 - 1500 Karakter (Standar)' },
+                    { value: '1500-2000', label: '1500 - 2000 Karakter (Lengkap)' },
+                    { value: 'unlimited', label: 'Tanpa Batasan (Sangat Detail)' }
                   ]}
                 />
               </div>
@@ -1660,18 +1672,6 @@ export default function App() {
                   placeholder="Contoh: Nama Klinik atau Praktik Mandiri" 
                   value={settings.clinicName} 
                   onChange={(e) => setSettings(prev => ({ ...prev, clinicName: e.target.value }))} 
-                />
-                <FormSelect
-                  label="Batasan Jumlah Karakter Laporan"
-                  id="charCountRange"
-                  value={settings.charCountRange}
-                  onChange={(e) => setSettings(prev => ({ ...prev, charCountRange: e.target.value as any }))}
-                  options={[
-                    { value: '500-800', label: '500 - 800 Karakter (Hemat)' },
-                    { value: '800-1500', label: '800 - 1500 Karakter (Standar)' },
-                    { value: '1500-2000', label: '1500 - 2000 Karakter (Lengkap)' },
-                    { value: 'unlimited', label: 'Tanpa Batasan (Sangat Detail)' }
-                  ]}
                 />
                 <FormSelect
                   label="Preferensi Model AI (Kecepatan vs Kualitas)"
