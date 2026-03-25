@@ -81,16 +81,16 @@ export function Tour({ onComplete }: { onComplete: () => void }) {
           </button>
         </div>
 
-        <div className="flex flex-col md:flex-row h-[400px]">
+        <div className="flex flex-col md:flex-row h-auto max-h-[80vh]">
           {/* Sidebar Steps */}
-          <div className="w-full md:w-1/3 border-r border-slate-100 dark:border-slate-800 p-4 space-y-2 overflow-y-auto bg-slate-50/30 dark:bg-slate-900/30">
+          <div className="w-full md:w-1/3 border-b md:border-b-0 md:border-r border-slate-100 dark:border-slate-800 p-4 flex md:flex-col gap-2 overflow-x-auto md:overflow-y-auto bg-slate-50/30 dark:bg-slate-900/30">
             {steps.map((step, index) => {
               const Icon = step.icon;
               return (
                 <button
                   key={index}
                   onClick={() => setActiveStep(index)}
-                  className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all text-left ${
+                  className={`flex-shrink-0 md:w-full flex items-center gap-3 p-3 rounded-xl transition-all text-left ${
                     activeStep === index 
                       ? 'bg-white dark:bg-slate-800 shadow-sm border border-slate-200 dark:border-slate-700' 
                       : 'hover:bg-slate-100 dark:hover:bg-slate-800/50 opacity-60 hover:opacity-100'
@@ -99,7 +99,7 @@ export function Tour({ onComplete }: { onComplete: () => void }) {
                   <div className={`p-1.5 rounded-lg ${activeStep === index ? 'bg-primary-50 dark:bg-primary-900/30' : 'bg-slate-100 dark:bg-slate-800'}`}>
                     <Icon className={`w-5 h-5 ${activeStep === index ? 'text-primary-600 dark:text-primary-400' : step.color}`} />
                   </div>
-                  <span className={`text-xs font-semibold ${activeStep === index ? 'text-slate-900 dark:text-white' : 'text-slate-500 dark:text-slate-400'}`}>
+                  <span className={`text-xs font-semibold whitespace-nowrap ${activeStep === index ? 'text-slate-900 dark:text-white' : 'text-slate-500 dark:text-slate-400'}`}>
                     Langkah {index + 1}
                   </span>
                 </button>
@@ -108,7 +108,7 @@ export function Tour({ onComplete }: { onComplete: () => void }) {
           </div>
 
           {/* Content Area */}
-          <div className="flex-1 p-8 flex flex-col justify-center relative overflow-hidden">
+          <div className="flex-1 p-6 md:p-8 flex flex-col justify-center relative overflow-hidden">
             <AnimatePresence mode="wait">
               <motion.div
                 key={activeStep}
@@ -131,7 +131,7 @@ export function Tour({ onComplete }: { onComplete: () => void }) {
             </AnimatePresence>
 
             {/* Pagination Dots */}
-            <div className="absolute bottom-8 left-8 flex gap-1.5">
+            <div className="absolute bottom-4 left-6 md:bottom-8 md:left-8 flex gap-1.5">
               {steps.map((_, i) => (
                 <div 
                   key={i} 

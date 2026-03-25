@@ -525,8 +525,8 @@ export async function generateNextSessionPlan(data: SessionData, report: string,
   }
 }
 
-export async function generateClinicalReport(data: SessionData, therapistName: string, clinicName: string, customPrompt?: string, charCountRange?: string, onChunk?: (chunk: string) => void, apiSettings?: ApiSettings): Promise<string> {
-  const template = customPrompt || DEFAULT_PROMPTS.clinicalReport;
+export async function generateClinicalReport(data: SessionData, therapistName: string, clinicName: string, customPrompt?: string, customReportFormat?: string, charCountRange?: string, onChunk?: (chunk: string) => void, apiSettings?: ApiSettings): Promise<string> {
+  const template = customReportFormat || customPrompt || DEFAULT_PROMPTS.clinicalReport;
   const prompt = buildPrompt(template, data, therapistName, clinicName, { charCountRange });
 
   const settings: ApiSettings = apiSettings || {

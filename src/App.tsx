@@ -7,7 +7,7 @@ import { marked } from 'marked';
 import { useUndo } from './hooks/useUndo';
 import { FastChoice } from './components/FastChoice';
 import { Tour } from './components/Tour';
-import { Copy, Download, Loader2, Sparkles, User as UserIcon, Activity, BrainCircuit, FileCheck, Save, History, LogOut, LogIn, Edit3, Check, Undo2, Redo2, ImagePlus, CalendarPlus, Upload, MessageSquareHeart, FileText, Lightbulb, Moon, Sun, Trash2, Settings, Key, CreditCard, XCircle, RotateCcw, HelpCircle, AlertTriangle } from 'lucide-react';
+import { Copy, Download, Loader2, Sparkles, User as UserIcon, Activity, BrainCircuit, FileCheck, Save, History, LogOut, LogIn, Edit3, Check, Undo2, Redo2, ImagePlus, CalendarPlus, Upload, MessageSquareHeart, FileText, Lightbulb, Moon, Sun, Trash2, Settings, Key, CreditCard, XCircle, RotateCcw, HelpCircle, AlertTriangle, ExternalLink } from 'lucide-react';
 import html2pdf from 'html2pdf.js';
 import { saveAs } from 'file-saver';
 
@@ -52,6 +52,8 @@ interface SettingsData {
     clientReport: string;
     suggestions: string;
   };
+  customReportFormat: string;
+  pdfTemplate: 'Modern' | 'Classic' | 'Minimal';
 }
 
 const initialObservationOptions = [
@@ -153,6 +155,7 @@ export default function App() {
 
   // Generate All State
   const [isGeneratingAll, setIsGeneratingAll] = useState(false);
+  const [generationStep, setGenerationStep] = useState<string>('');
 
   // File Upload State
   const fileInputRef = React.useRef<HTMLInputElement>(null);
@@ -179,7 +182,9 @@ export default function App() {
       liteLLMBaseUrl: LITELLM_DEFAULT_BASE_URL,
       selectedModel: 'gemini-3-flash-preview'
     },
-    prompts: DEFAULT_PROMPTS
+    prompts: DEFAULT_PROMPTS,
+    customReportFormat: '',
+    pdfTemplate: 'Modern'
   });
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [liteLLMModels, setLiteLLMModels] = useState<string[]>([]);
@@ -284,7 +289,9 @@ export default function App() {
             liteLLMBaseUrl: LITELLM_DEFAULT_BASE_URL,
             selectedModel: 'gemini-3-flash-preview'
           },
-          prompts: parsed.prompts || DEFAULT_PROMPTS
+          prompts: parsed.prompts || DEFAULT_PROMPTS,
+          customReportFormat: parsed.customReportFormat || '',
+          pdfTemplate: parsed.pdfTemplate || 'Modern'
         });
       } catch (e) {
         console.error("Failed to parse settings data");
@@ -341,6 +348,11 @@ export default function App() {
   };
 
   const saveToHistory = () => {
+    _saveToHistory();
+    alert('Laporan berhasil disimpan ke riwayat!');
+  };
+
+  const _saveToHistory = () => {
     if (!report) return;
     
     const newItem: HistoryItem = {
@@ -361,8 +373,6 @@ export default function App() {
       localStorage.setItem(HISTORY_KEY, JSON.stringify(newHistory));
       return newHistory;
     });
-    
-    alert('Laporan berhasil disimpan ke riwayat!');
   };
 
   const loadFromHistory = (item: HistoryItem) => {
@@ -408,6 +418,7 @@ export default function App() {
     cancelRef.current = true;
     setIsGenerating(false);
     setIsGeneratingAll(false);
+    setGenerationStep('');
     setIsGeneratingPlan(false);
     setIsGeneratingClientReport(false);
     setIsGeneratingSuggestions(false);
@@ -434,7 +445,8 @@ export default function App() {
         formData, 
         settings.therapistName, 
         settings.clinicName, 
-        settings.prompts.clinicalReport, 
+        settings.prompts.clinicalReport,
+        settings.customReportFormat,
         settings.charCountRange,
         (chunk) => {
           if (cancelRef.current) return;
@@ -538,6 +550,7 @@ export default function App() {
     const startGeneration = async () => {
       cancelRef.current = false;
       setIsGeneratingAll(true);
+      setGenerationStep('Memulai proses...');
       setError('');
       setIsEditing(false);
       setIsEditingPlan(false);
@@ -552,13 +565,15 @@ export default function App() {
 
       try {
         setIsGenerating(true);
+        setGenerationStep('Menghasilkan Laporan Klinis...');
         resetReport('');
         let fullText = '';
         const generatedReport = await generateClinicalReport(
           formData, 
           settings.therapistName, 
           settings.clinicName, 
-          settings.prompts.clinicalReport, 
+          settings.prompts.clinicalReport,
+          settings.customReportFormat,
           settings.charCountRange,
           (chunk) => {
             if (cancelRef.current) return;
@@ -572,6 +587,7 @@ export default function App() {
         setIsGenerating(false);
 
         // Run the rest in parallel as they all depend on generatedReport
+        setGenerationStep('Menghasilkan Rencana, Laporan Klien, dan Saran...');
         setIsGeneratingPlan(true);
         setIsGeneratingClientReport(true);
         setIsGeneratingSuggestions(true);
@@ -592,6 +608,8 @@ export default function App() {
 
         resetSuggestions(generatedSuggestions);
         setIsGeneratingSuggestions(false);
+        
+        _saveToHistory();
 
       } catch (err: any) {
         if (!cancelRef.current) {
@@ -603,6 +621,7 @@ export default function App() {
         setIsGeneratingSuggestions(false);
       } finally {
         setIsGeneratingAll(false);
+        setGenerationStep('');
       }
     };
 
@@ -707,37 +726,96 @@ export default function App() {
     
     // Split by <h2
     const parts = rawHtml.split('<h2');
-    let boxedHtml = `<div style="margin-bottom: 20px;">${parts[0]}</div>`;
     
-    for (let i = 1; i < parts.length; i++) {
-      const part = '<h2' + parts[i];
-      const h2EndIndex = part.indexOf('</h2>') + 5;
-      const h2 = part.substring(0, h2EndIndex);
-      const sectionContent = part.substring(h2EndIndex);
-      
-      boxedHtml += `
-        <div style="border: 1px solid #cbd5e1; border-radius: 8px; margin-bottom: 20px; overflow: hidden; page-break-inside: avoid; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-          <div style="background-color: #f8fafc; border-bottom: 1px solid #cbd5e1; padding: 12px 16px;">
-            <h2 style="margin: 0; font-size: 16px; color: #1e293b; font-weight: 600;">${h2.replace(/<h2[^>]*>|<\/h2>/g, '')}</h2>
+    let templateHtml = '';
+    let styleContent = '';
+
+    if (settings.pdfTemplate === 'Modern') {
+      let boxedHtml = `<div style="margin-bottom: 20px;">${parts[0]}</div>`;
+      for (let i = 1; i < parts.length; i++) {
+        const part = '<h2' + parts[i];
+        const h2EndIndex = part.indexOf('</h2>') + 5;
+        const h2 = part.substring(0, h2EndIndex);
+        const sectionContent = part.substring(h2EndIndex);
+        boxedHtml += `
+          <div style="border: 1px solid #cbd5e1; border-radius: 8px; margin-bottom: 20px; overflow: hidden; page-break-inside: avoid; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+            <div style="background-color: #f8fafc; border-bottom: 1px solid #cbd5e1; padding: 12px 16px;">
+              <h2 style="margin: 0; font-size: 16px; color: #1e293b; font-weight: 600;">${h2.replace(/<h2[^>]*>|<\/h2>/g, '')}</h2>
+            </div>
+            <div style="padding: 16px; font-size: 14px; line-height: 1.6; color: #334155;">
+              ${sectionContent}
+            </div>
           </div>
-          <div style="padding: 16px; font-size: 14px; line-height: 1.6; color: #334155;">
-            ${sectionContent}
+        `;
+      }
+      templateHtml = boxedHtml;
+      styleContent = `
+        p { margin-top: 0; margin-bottom: 10px; }
+        p:last-child { margin-bottom: 0; }
+        ul, ol { margin-top: 0; margin-bottom: 10px; padding-left: 20px; }
+        ul:last-child, ol:last-child { margin-bottom: 0; }
+        li { margin-bottom: 4px; }
+        strong { color: #0f172a; }
+        hr { border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0; }
+      `;
+    } else if (settings.pdfTemplate === 'Classic') {
+      let classicHtml = `<div style="margin-bottom: 20px;">${parts[0]}</div>`;
+      for (let i = 1; i < parts.length; i++) {
+        const part = '<h2' + parts[i];
+        const h2EndIndex = part.indexOf('</h2>') + 5;
+        const h2 = part.substring(0, h2EndIndex);
+        const sectionContent = part.substring(h2EndIndex);
+        classicHtml += `
+          <div style="margin-bottom: 25px; page-break-inside: avoid;">
+            <h2 style="border-bottom: 2px solid #1e293b; padding-bottom: 5px; margin-bottom: 15px; font-size: 18px; color: #1e293b; text-transform: uppercase; letter-spacing: 0.05em;">${h2.replace(/<h2[^>]*>|<\/h2>/g, '')}</h2>
+            <div style="font-size: 14px; line-height: 1.6; color: #334155; font-family: 'Times New Roman', serif;">
+              ${sectionContent}
+            </div>
           </div>
-        </div>
+        `;
+      }
+      templateHtml = classicHtml;
+      styleContent = `
+        p { margin-bottom: 15px; text-align: justify; }
+        ul, ol { margin-bottom: 15px; padding-left: 25px; }
+        li { margin-bottom: 5px; }
+        strong { font-weight: bold; }
+      `;
+    } else { // Minimal
+      let minimalHtml = `<div style="margin-bottom: 20px;">${parts[0]}</div>`;
+      for (let i = 1; i < parts.length; i++) {
+        const part = '<h2' + parts[i];
+        const h2EndIndex = part.indexOf('</h2>') + 5;
+        const h2 = part.substring(0, h2EndIndex);
+        const sectionContent = part.substring(h2EndIndex);
+        minimalHtml += `
+          <div style="margin-bottom: 15px; page-break-inside: avoid;">
+            <h2 style="margin: 0 0 10px 0; font-size: 15px; color: #000; font-weight: bold;">${h2.replace(/<h2[^>]*>|<\/h2>/g, '')}</h2>
+            <div style="font-size: 13px; line-height: 1.5; color: #000;">
+              ${sectionContent}
+            </div>
+          </div>
+        `;
+      }
+      templateHtml = minimalHtml;
+      styleContent = `
+        p { margin: 0 0 8px 0; }
+        ul, ol { margin: 0 0 8px 0; padding-left: 15px; }
+        li { margin-bottom: 2px; }
       `;
     }
 
     const element = document.createElement('div');
     element.innerHTML = `
-      <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 20px; max-width: 800px; margin: 0 auto;">
-        <div style="text-align: center; margin-bottom: 30px; padding-bottom: 15px; border-bottom: 2px solid #4f46e5;">
+      <div style="font-family: ${settings.pdfTemplate === 'Classic' ? "'Times New Roman', serif" : "'Helvetica Neue', Helvetica, Arial, sans-serif"}; padding: 20px; max-width: 800px; margin: 0 auto;">
+        <div style="text-align: center; margin-bottom: 30px; padding-bottom: 15px; ${settings.pdfTemplate === 'Classic' ? 'border-bottom: 3px double #1e293b;' : 'border-bottom: 2px solid #4f46e5;'}">
           <h1 style="font-size: 24px; color: #1e1b4b; margin: 0 0 5px 0; font-weight: 700;">${settings.clinicName || 'Klinik Hipnoterapi'}</h1>
           <p style="font-size: 16px; color: #334155; margin: 0 0 5px 0; font-weight: 500;">Layanan Hipnoterapi dan Konsultasi Psikologi</p>
-          <div style="display: inline-block; background-color: #e0e7ff; color: #4f46e5; padding: 4px 12px; border-radius: 9999px; font-size: 14px; font-weight: 600; margin-top: 15px;">
+          <div style="display: inline-block; background-color: ${settings.pdfTemplate === 'Classic' ? '#f1f5f9' : '#e0e7ff'}; color: ${settings.pdfTemplate === 'Classic' ? '#1e293b' : '#4f46e5'}; padding: 4px 12px; border-radius: ${settings.pdfTemplate === 'Classic' ? '0' : '9999px'}; font-size: 14px; font-weight: 600; margin-top: 15px; ${settings.pdfTemplate === 'Classic' ? 'border: 1px solid #1e293b;' : ''}">
             ${title}
           </div>
         </div>
-        ${boxedHtml}
+        ${templateHtml}
         <div style="margin-top: 40px; text-align: center; font-size: 12px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 15px;">
           Dihasilkan secara otomatis oleh TheraGen AI pada ${new Date().toLocaleDateString('id-ID', { year: 'numeric', month: 'long', day: 'numeric' })}
         </div>
@@ -745,15 +823,7 @@ export default function App() {
     `;
 
     const style = document.createElement('style');
-    style.innerHTML = `
-      p { margin-top: 0; margin-bottom: 10px; }
-      p:last-child { margin-bottom: 0; }
-      ul, ol { margin-top: 0; margin-bottom: 10px; padding-left: 20px; }
-      ul:last-child, ol:last-child { margin-bottom: 0; }
-      li { margin-bottom: 4px; }
-      strong { color: #0f172a; }
-      hr { border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0; }
-    `;
+    style.innerHTML = styleContent;
     element.appendChild(style);
 
     const opt = {
@@ -1140,8 +1210,17 @@ export default function App() {
                   className="flex-[2] bg-primary-600 hover:bg-primary-700 text-white font-medium py-3 px-4 rounded-xl shadow-sm transition-all flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
                   title="Generate Laporan, Rencana, Laporan Klien, dan Saran sekaligus"
                 >
-                  <Sparkles className="w-5 h-5" />
-                  Generate Semua
+                  {isGeneratingAll ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      {generationStep}
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-5 h-5" />
+                      Generate Semua
+                    </>
+                  )}
                 </button>
               </>
             )}
@@ -1673,6 +1752,38 @@ export default function App() {
                   value={settings.clinicName} 
                   onChange={(e) => setSettings(prev => ({ ...prev, clinicName: e.target.value }))} 
                 />
+                <FormTextarea
+                  label="Format Laporan Kustom (Opsional)"
+                  id="customReportFormat"
+                  placeholder="Masukkan format laporan kustom Anda di sini..."
+                  value={settings.customReportFormat}
+                  onChange={(e) => setSettings(prev => ({ ...prev, customReportFormat: e.target.value }))}
+                />
+                <FormSelect
+                  label="Template Visual PDF"
+                  id="pdfTemplate"
+                  value={settings.pdfTemplate}
+                  onChange={(e) => setSettings(prev => ({ ...prev, pdfTemplate: e.target.value as any }))}
+                  options={[
+                    { value: 'Modern', label: 'Modern (Bersih & Profesional)' },
+                    { value: 'Classic', label: 'Classic (Formal & Tradisional)' },
+                    { value: 'Minimal', label: 'Minimal (Sederhana & Hemat Tinta)' }
+                  ]}
+                />
+                <div className="pt-4 border-t border-slate-100 dark:border-slate-800">
+                  <h3 className="text-sm font-semibold text-slate-900 dark:text-white mb-3">Informasi Kuota API</h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
+                    Aplikasi ini menggunakan API Google AI Studio. Kuota penggunaan dikelola langsung oleh Google berdasarkan akun Anda.
+                  </p>
+                  <a 
+                    href="https://aistudio.google.com/pricing" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 text-xs font-medium text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 transition-colors"
+                  >
+                    <ExternalLink className="w-3 h-3" /> Cek detail kuota & harga
+                  </a>
+                </div>
                 <FormSelect
                   label="Preferensi Model AI (Kecepatan vs Kualitas)"
                   id="modelPreference"
